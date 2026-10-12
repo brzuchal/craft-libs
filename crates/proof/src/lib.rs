@@ -5,7 +5,7 @@
 //!   pair, word checks, generated forms, the suggestion tables (`TRY`, `MAP`, `REP`) and a
 //!   compact serialized form ([`affix::AffixDict::to_bytes`]) for fast loading.
 //! - [`hunspell`]: finding an installed pair per app ([`hunspell::Search`]), decoding it from
-//!   UTF-8 or ISO 8859-2 and loading it.
+//!   UTF-8, ISO 8859-2, KOI8-R or Windows-1251 and loading it.
 //! - [`tag`]: canonical BCP 47 tags and primary subtags, for mapping a text's language to a
 //!   dictionary name.
 //!
