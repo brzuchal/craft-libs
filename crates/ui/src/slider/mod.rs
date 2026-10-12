@@ -11,10 +11,17 @@
 //! value snaps to a [`Slider::step`]. With keyboard focus, Left/Down and Right/Up move one step
 //! (or 1% of the track), Page Up/Down ten, Home/End to the ends. Assistive technology sees a slider
 //! with the given label and value, and its increment/decrement actions work.
+//!
+//! [`ZoomBar`] combines a logarithmic slider with `−`/`+` buttons and a fixed-width percentage, the
+//! status bar zoom control of the Office-style apps.
 
 use std::ops::RangeInclusive;
 
 use egui::{Color32, CornerRadius, EventFilter, Key, Rect, Response, Sense, Stroke, StrokeKind, Ui, Vec2, pos2, vec2};
+
+mod zoom;
+
+pub use zoom::{ZoomBar, ZoomBarLabels, ZoomBarResponse, ZoomBarStyle};
 
 #[cfg(test)]
 mod tests;

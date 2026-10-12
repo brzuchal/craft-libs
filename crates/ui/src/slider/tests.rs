@@ -165,3 +165,45 @@ fn the_field_stays_beside_the_track_in_a_vertical_layout() {
     out.textures_delta.clear();
     assert!(rect.unwrap().height() <= HEIGHT + 4.0, "one row: {:?}", rect);
 }
+
+fn zoom_frame(ctx: &Context, percent: &mut f64, events: Vec<Event>) -> ZoomBarResponse {
+    let style = ZoomBarStyle {
+        slider: SliderStyle::from_visuals(&egui::Visuals::light()),
+        icon: Color32::GRAY,
+        hover: Color32::LIGHT_GRAY,
+        text: Color32::GRAY,
+        font: 12.0,
+    };
+    let labels = ZoomBarLabels { zoom: "Zoom", zoom_in: "Zoom In", zoom_out: "Zoom Out" };
+    let mut out = None;
+    let mut o = ctx.run_ui(RawInput { screen_rect: Some(Rect::from_min_size(Pos2::ZERO, vec2(600.0, 100.0))), events, ..Default::default() }, |ui| {
+        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+            out = Some(ZoomBar::new(percent, 10.0..=500.0, labels, &style).stops(&[10.0, 25.0, 50.0, 75.0, 100.0, 150.0, 200.0, 500.0]).show(ui));
+        });
+    });
+    o.textures_delta.clear();
+    out.unwrap()
+}
+
+#[test]
+fn zoom_bar_keeps_its_size_and_steps_through_its_stops() {
+    let ctx = Context::default();
+    let mut p = 99.0;
+    let a = zoom_frame(&ctx, &mut p, vec![]).response.rect;
+    p = 100.0;
+    let b = zoom_frame(&ctx, &mut p, vec![]).response.rect;
+    assert_eq!(a, b, "same block from 99% to 100%, in a right-to-left layout too");
+    // The `+` button is the second 18 pt square from the right edge of the slider; find it by
+    // clicking left to right across the block and watching the value.
+    let y = b.center().y;
+    let plus_x = b.left() + 18.0 + 110.0 + 9.0;
+    for e in [vec![Event::PointerMoved(pos2(plus_x, y)), pointer(pos2(plus_x, y), true)], vec![pointer(pos2(plus_x, y), false)]] {
+        zoom_frame(&ctx, &mut p, e);
+    }
+    assert_eq!(p, 150.0, "+ goes to the next stop");
+    let minus_x = b.left() + 9.0;
+    for e in [vec![Event::PointerMoved(pos2(minus_x, y)), pointer(pos2(minus_x, y), true)], vec![pointer(pos2(minus_x, y), false)]] {
+        zoom_frame(&ctx, &mut p, e);
+    }
+    assert_eq!(p, 100.0, "- goes to the previous stop");
+}
