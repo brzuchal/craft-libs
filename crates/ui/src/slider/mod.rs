@@ -155,6 +155,14 @@ impl<'a> Slider<'a> {
     /// this frame (by pointer, keyboard, accessibility action or the field) and
     /// `drag_stopped()` when a drag on the track ended.
     pub fn show(self, ui: &mut Ui) -> Response {
+        // The track and its value field stay on one row, whatever the surrounding layout.
+        if self.field.is_some() && !ui.layout().is_horizontal() {
+            return ui.horizontal(|ui| self.show_row(ui)).inner;
+        }
+        self.show_row(ui)
+    }
+
+    fn show_row(self, ui: &mut Ui) -> Response {
         if !self.value.is_finite() {
             *self.value = *self.range.start();
         }

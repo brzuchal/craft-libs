@@ -152,3 +152,16 @@ fn assistive_technology_sees_a_labelled_slider() {
     assert_eq!(node.numeric_value(), Some(100.0));
     assert_eq!(node.label(), Some("Zoom"));
 }
+
+#[test]
+fn the_field_stays_beside_the_track_in_a_vertical_layout() {
+    let ctx = Context::default();
+    let style = SliderStyle::from_visuals(&egui::Visuals::light());
+    let mut v = 1.0;
+    let mut rect = None;
+    let mut out = ctx.run_ui(RawInput { screen_rect: Some(Rect::from_min_size(Pos2::ZERO, vec2(400.0, 200.0))), ..Default::default() }, |ui| {
+        ui.vertical(|ui| rect = Some(Slider::new(&mut v, 0.5..=2.0, "Speed", &style).editable(2, "×").show(ui).rect));
+    });
+    out.textures_delta.clear();
+    assert!(rect.unwrap().height() <= HEIGHT + 4.0, "one row: {:?}", rect);
+}
