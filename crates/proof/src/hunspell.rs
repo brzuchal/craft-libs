@@ -6,8 +6,8 @@
 //! has no spelling check (no marks, no errors), like Word without the language's proofing tools.
 //!
 //! Where to look is per app ([`Search`]): its own dictionaries folder (a setting), an environment
-//! variable and a folder under the user's application data, then the usual system locations. On
-//! the web there are none.
+//! variable and a folder under the user's application data (on every desktop system), then the
+//! usual system locations. On the web there are none.
 
 use std::path::{Path, PathBuf};
 
@@ -23,15 +23,21 @@ pub struct Search {
     pub extra_dir: Option<PathBuf>,
     /// An environment variable naming a folder searched next (`WORDCRAFT_DICTIONARIES`).
     pub env_var: Option<String>,
-    /// The app's folder name under the Windows application-data folders (`WordCraft` searches
-    /// `%LOCALAPPDATA%\WordCraft\dictionaries`).
+    /// The app's folder name under the user's application data. `WordCraft` searches:
+    /// - Windows: `%LOCALAPPDATA%\WordCraft\dictionaries`, then `%APPDATA%\WordCraft\dictionaries`
+    /// - macOS: `~/Library/Application Support/WordCraft/dictionaries`
+    /// - Linux and the BSDs: `$XDG_DATA_HOME/wordcraft/dictionaries` (default
+    ///   `~/.local/share/wordcraft/dictionaries`; the name is lower-cased there, as XDG folders are)
+    ///
+    /// An app started from Finder, the Dock or a desktop launcher doesn't see shell variables such
+    /// as `WORDCRAFT_DICTIONARIES`, so this folder lets users add a dictionary without any setting.
     pub app_dir: Option<String>,
 }
 
 impl Search {
     /// The search for an app called `app` (`WordCraft`): its environment variable is the
-    /// upper-cased name with `_DICTIONARIES` (`WORDCRAFT_DICTIONARIES`) and its Windows folder the
-    /// name itself.
+    /// upper-cased name with `_DICTIONARIES` (`WORDCRAFT_DICTIONARIES`) and its folder under the
+    /// user's application data the name itself (see [`Search::app_dir`]).
     pub fn for_app(app: &str) -> Search {
         Search { extra_dir: None, env_var: Some(format!("{}_DICTIONARIES", app.to_ascii_uppercase())), app_dir: Some(app.to_string()) }
     }
@@ -65,6 +71,9 @@ impl Search {
             }
         } else if cfg!(target_os = "macos") {
             if let Some(h) = &home {
+                if let Some(app) = &self.app_dir {
+                    dirs.push(h.join("Library/Application Support").join(app).join("dictionaries"));
+                }
                 dirs.push(h.join("Library/Spelling"));
             }
             dirs.push(PathBuf::from("/Library/Spelling"));
@@ -72,6 +81,14 @@ impl Search {
             dirs.push(PathBuf::from("/usr/local/share/hunspell"));
             dirs.extend(lo_dirs(Path::new("/Applications/LibreOffice.app/Contents/Resources/extensions")));
         } else {
+            // XDG_DATA_HOME must be absolute to count; otherwise the spec's default applies.
+            let data_home = std::env::var_os("XDG_DATA_HOME")
+                .map(PathBuf::from)
+                .filter(|p| p.is_absolute())
+                .or_else(|| home.as_ref().map(|h| h.join(".local/share")));
+            if let (Some(data), Some(app)) = (&data_home, &self.app_dir) {
+                dirs.push(data.join(app.to_lowercase()).join("dictionaries"));
+            }
             if let Some(h) = &home {
                 dirs.push(h.join(".local/share/hunspell"));
             }
@@ -216,6 +233,29 @@ mod tests {
         let extra = std::env::temp_dir().join("craft-proof-extra");
         let s = Search { extra_dir: Some(extra.clone()), ..Search::for_app("PdfCraft") };
         assert_eq!(s.dirs(None).first(), Some(&extra), "the setting comes first");
+    }
+
+    /// The app's own folder under the user's application data is searched on every desktop
+    /// system, before the shared system locations (storytold/wordcraft#1063).
+    #[test]
+    fn the_app_folder_comes_before_the_system_locations() {
+        let dirs = Search::for_app("WordCraft").dirs(None);
+        let at = |suffix: &str| dirs.iter().position(|d| d.ends_with(suffix));
+        if cfg!(target_arch = "wasm32") {
+            return;
+        }
+        let (app, shared) = if cfg!(windows) {
+            ("WordCraft/dictionaries", "hunspell")
+        } else if cfg!(target_os = "macos") {
+            ("Application Support/WordCraft/dictionaries", "/Library/Spelling")
+        } else {
+            ("wordcraft/dictionaries", "/usr/share/hunspell")
+        };
+        if std::env::var_os(if cfg!(windows) { "LOCALAPPDATA" } else { "HOME" }).is_none() {
+            return; // no user folder to derive it from
+        }
+        let (Some(app), Some(shared)) = (at(app), at(shared)) else { panic!("{dirs:?}") };
+        assert!(app < shared, "{dirs:?}");
     }
 
     #[test]

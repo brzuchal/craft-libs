@@ -17,8 +17,9 @@ if let Some((aff, dic)) = search.find(&["pl_PL", "pl"]) {
 - **Dictionaries are not bundled.** Apps read what the OS, a package manager or LibreOffice
   installed; without one a language simply has no spelling check.
 - **Search order** (`Search`): the app's dictionaries folder setting, `<APP>_DICTIONARIES`, the
-  app's folder under the Windows application-data folders, then the usual Hunspell and
-  LibreOffice locations for the platform. Nothing on wasm.
+  app's folder under the user's application data (`%LOCALAPPDATA%\WordCraft\dictionaries`,
+  `~/Library/Application Support/WordCraft/dictionaries`, `$XDG_DATA_HOME/wordcraft/dictionaries`),
+  then the usual Hunspell and LibreOffice locations for the platform. Nothing on wasm.
 - **Affix engine** (`AffixDict`): the Hunspell subset real dictionaries such as SJP.PL (Polish)
   and VERO (Brazilian Portuguese) use: one-character or `FLAG UTF-8` flags, prefixes and
   suffixes with conditions and cross products, continuation classes, `FORBIDDENWORD`, and the
