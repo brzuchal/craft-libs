@@ -207,3 +207,13 @@ fn zoom_bar_keeps_its_size_and_steps_through_its_stops() {
     }
     assert_eq!(p, 100.0, "- goes to the previous stop");
 }
+
+#[test]
+fn typed_values_drop_the_suffix_even_when_it_holds_a_digit() {
+    assert_eq!(parse_typed("120%", "%"), Some(120.0));
+    assert_eq!(parse_typed(" 12,5 pt ", "pt"), Some(12.5));
+    assert_eq!(parse_typed("24fps", "fps"), Some(24.0));
+    assert_eq!(parse_typed("30 f/1s", "f/1s"), Some(30.0), "the suffix's own digit is not read as part of the number");
+    assert_eq!(parse_typed("24 fp", "fps"), Some(24.0), "a half-typed suffix");
+    assert_eq!(parse_typed("fast", "%"), None);
+}
