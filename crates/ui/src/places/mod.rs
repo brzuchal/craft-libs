@@ -11,6 +11,8 @@
 //! file, starts a sign-in or shows the system's own file dialog. An application without remote
 //! storage passes no account places and leaves [`PlacesPanel::add_place`] off; nothing else changes.
 
+pub mod local;
+
 use egui::text::{LayoutJob, TextWrapping};
 use egui::{
     Color32, CornerRadius, CursorIcon, FontId, Painter, Pos2, Rect, Response, ScrollArea, Sense, Shape, Stroke, StrokeKind, Ui, UiBuilder, pos2, vec2,

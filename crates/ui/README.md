@@ -326,6 +326,54 @@ fn open_page(ui: &mut egui::Ui, places: &[Place<'_>], selected: usize, entries: 
   thumbnail. Icons keep one colour, the same in every app. `PlacesStyle::from_visuals` takes the
   accent from `selection.bg_fill`.
 
+### This computer
+
+`places::local::LocalFolder` is what an app adds when its "This computer" place should list
+folders in the page instead of sending the user to the system's dialog. It reads a folder once
+per move, never per frame, and only lists names.
+
+```rust
+use craft_ui::places::local::{LocalFolder, LocalLabels, LocalOutcome};
+use craft_ui::places::{Place, PlacesLabels, PlacesPanel, PlacesStyle};
+
+fn this_computer(ui: &mut egui::Ui, folder: &mut LocalFolder, places: &[Place<'_>], style: &PlacesStyle, labels: PlacesLabels<'_>, words: LocalLabels<'_>) {
+    let entries = folder.entries();
+    let crumbs = folder.crumbs("This computer");
+    let crumbs: Vec<&str> = crumbs.iter().map(String::as_str).collect();
+    let action = PlacesPanel::new(places, Some(1), folder.content(&entries, words), style, labels).crumbs(&crumbs).show(ui).action;
+    match action.map(|action| folder.act(action)) {
+        Some(LocalOutcome::Open(path)) => { /* open the document at `path` */ }
+        Some(LocalOutcome::Browse) => { /* show the system's own file dialog */ }
+        Some(LocalOutcome::Stay) | None => {}
+    }
+}
+```
+
+- **Opening.** `LocalFolder::open(dir, &["docx", "rtf"])` lists the subfolders and the files of
+  those kinds (`*` for every file), folders first, each by name; hidden entries are left out and a
+  folder of more than `local::MAX_LISTED` entries is cut. `LocalFolder::home()` is where the place
+  usually starts.
+- **Moving.** `act` moves the listing when a subfolder or a breadcrumb step is chosen, and returns
+  the file to open or the request for the system's dialog. Choosing another place is the app's.
+- **Nothing to show.** `content` turns an empty folder, a folder that is gone and a folder closed
+  to the app into the right `PlacesNotice`, with the app's words from `LocalLabels`. The closed
+  folder gets a Browse button: a document picked in the system's dialog still opens.
+- **macOS.** The system asks the user once before an app reads Documents, Desktop or Downloads,
+  and refuses silently after a No. Give its question a reason in the bundle's `Info.plist`:
+
+  ```xml
+  <key>NSDocumentsFolderUsageDescription</key>
+  <string>WordCraft lists the documents in your Documents folder on its Open page and opens the ones you choose.</string>
+  <key>NSDesktopFolderUsageDescription</key>
+  <string>WordCraft lists the documents on your Desktop on its Open page and opens the ones you choose.</string>
+  <key>NSDownloadsFolderUsageDescription</key>
+  <string>WordCraft lists the documents in your Downloads folder on its Open page and opens the ones you choose.</string>
+  ```
+
+  A build started from a terminal has no identity of its own, so the system answers for the
+  terminal instead and may refuse without asking.
+- **The web** has no folders to list: offer no such place there.
+
 ## Compatibility and checks
 
 The crate uses egui 0.36 and Rust 1.95 or later. Its production dependency disables egui's default
