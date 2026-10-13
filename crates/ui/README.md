@@ -5,6 +5,7 @@ embedded SVG catalogs; `buttons` paints accessible icon buttons; `tabs` handles 
 interaction; `layout` provides toolbar fitting, split geometry and resize handles; `theme` shares widget-state styling.
 `docking` supplies transactional panel moves and an optional docking surface.
 `printing` supplies printer/job controls and asynchronous feedback used by WordCraft and GridCraft.
+`places` is the panel an app opens documents from and saves them to, with or without remote storage.
 The current delivery covers nine creative apps (DesignCraft, VectorCraft, PhotoCraft, FilmCraft, EffectCraft, CADCraft, PDFCraft, LightCraft and SoundCraft); prior basic and office adapters are separate. The [suite audit](../../docs/ui-components-audit.md#adoption-and-acceptance)
 records their scope and acceptance limits. Assets, complete themes, localization and command handling
 remain in each application. No icons, fonts or application engines are bundled.
@@ -231,6 +232,53 @@ host submit callback and keep active work alive when closing a window. Queue-def
 represented by `None`, independently of explicit one-sided, long-edge or short-edge choices.
 Receipts and backend errors remain unmodified data for the app to display. These controls work
 on WASM too; browser PDF printing remains an app-owned service.
+
+## Places panel
+
+`places::PlacesPanel` is where an app opens a document from and saves it to: places on the left
+(Recent, one per connected account, This computer), the chosen place's files and folders on the
+right. One panel serves three hosts: the File › Open and Save As pages of the Office-style apps,
+the home screen of the graphics apps, and, through `places::menu`, the "Open from" items of a
+classic File menu. Preview all of them with
+`cargo run -p craft-ui --example places_preview -- OUT_DIR` (set `CRAFT_PREVIEW_FONTS` to a folder
+with `Inter-Regular.ttf` to render in Inter).
+
+```rust
+use craft_ui::places::{Place, PlaceEntry, PlacesAction, PlacesContent, PlacesLabels, PlacesPanel, PlacesStyle};
+
+fn open_page(ui: &mut egui::Ui, places: &[Place<'_>], selected: usize, entries: &[PlaceEntry<'_>], crumbs: &[&str], remote: bool) {
+    let style = PlacesStyle::from_visuals(ui.visuals());
+    let labels = PlacesLabels { places: "Places", add_place: "Add a place", browse: "Browse…", loading: "Loading…" };
+    let panel = PlacesPanel::new(places, Some(selected), PlacesContent::Entries(entries), &style, labels).crumbs(crumbs).add_place(remote);
+    match panel.show(ui).action {
+        Some(PlacesAction::Select(place)) => { /* list that place */ }
+        Some(PlacesAction::Activate(entry)) => { /* open the file, or list the folder */ }
+        Some(PlacesAction::Crumb(step)) => { /* go back up to that folder */ }
+        Some(PlacesAction::AddPlace) => { /* start a sign-in */ }
+        Some(PlacesAction::Browse) => { /* show the system's own file dialog */ }
+        None => {}
+    }
+}
+```
+
+- **No IO.** The panel opens no file and no socket and knows no storage provider. The app passes
+  the places and entries it has and acts on the `PlacesAction` it gets back; indices point into
+  the slices passed that frame. `PlacesContent::Loading` and `PlacesContent::Message` stand in
+  while the app is still asking, or has nothing to list.
+- **With or without remote storage.** An app without it passes no account places and leaves
+  `add_place` off, and nothing else changes. "Add a place" is off by default: a control that
+  cannot work is worse than none.
+- **The system dialog stays.** Browse reports `PlacesAction::Browse` and the app shows the native
+  dialog, which already knows the system's own cloud folders and network drives. A host with its
+  own Open button above the places turns Browse off.
+- **Hosts.** The panel fills the rect it is given. `header` puts the host's own controls above
+  the places (a home screen's New and Open buttons); `view(PlacesView::Thumbnails)` with
+  `thumbnails` suits pictures, the default list suits documents.
+- **Text.** A long name is cut with an ellipsis and never pushes the detail beside it ("Anna is
+  editing", "shared by Tom · view only") out of sight. The app supplies every string, and its own
+  glyphs through `icons` when the built-in line icons do not match its set.
+- **Accent.** The app's accent marks the chosen place and file icons; `PlacesStyle::from_visuals`
+  takes it from `selection.bg_fill`.
 
 ## Compatibility and checks
 
