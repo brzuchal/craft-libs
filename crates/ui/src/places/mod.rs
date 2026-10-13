@@ -622,7 +622,7 @@ pub fn paint_icon(icon: PlacesIcon, painter: &Painter, rect: Rect, colour: Color
     }
 }
 
-fn finite(value: f32, fallback: f32) -> f32 {
+pub(crate) fn finite(value: f32, fallback: f32) -> f32 {
     if value.is_finite() { value.max(0.0) } else { fallback }
 }
 
