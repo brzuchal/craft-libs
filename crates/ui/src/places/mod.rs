@@ -175,6 +175,9 @@ const TEXT_X: f32 = PAD + ICON + 8.0;
 const TILE_WIDTH: f32 = 132.0;
 const TILE_GAP: f32 = 12.0;
 const THUMBNAIL_HEIGHT: f32 = 84.0;
+const CRUMB_SPACING: f32 = 4.0;
+const CRUMB_SEPARATOR: f32 = 8.0;
+const ELLIPSIS: &str = "…";
 
 /// See the module documentation.
 pub struct PlacesPanel<'a> {
@@ -310,14 +313,27 @@ impl<'a> PlacesPanel<'a> {
             ui.set_clip_rect(body.intersect(ui.clip_rect()));
             if !crumbs.is_empty() {
                 ui.horizontal(|ui| {
-                    ui.spacing_mut().item_spacing = vec2(4.0, 0.0);
-                    for (i, step) in crumbs.iter().enumerate() {
-                        let last = i + 1 == crumbs.len();
-                        if crumb(ui, s, step, last).clicked() && !last {
-                            action = Some(PlacesAction::Crumb(i));
+                    ui.spacing_mut().item_spacing = vec2(CRUMB_SPACING, 0.0);
+                    let widths: Vec<f32> = crumbs.iter().map(|step| text_width(ui, s, step)).collect();
+                    let dots = text_width(ui, s, ELLIPSIS);
+                    let shown = fit_crumbs(&widths, CRUMB_SEPARATOR + 2.0 * CRUMB_SPACING, dots, finite(ui.available_width(), f32::MAX));
+                    for (position, step) in shown.iter().enumerate() {
+                        let last = position + 1 == shown.len();
+                        match step.and_then(|i| crumbs.get(i).map(|label| (i, label))) {
+                            Some((i, label)) => {
+                                if crumb(ui, s, label, last).clicked() && !last {
+                                    action = Some(PlacesAction::Crumb(i));
+                                }
+                            }
+                            // The steps that did not fit. Not a control: the step before it and
+                            // the ones after it are, and the full path is the app's to show.
+                            None => {
+                                let (at, _) = ui.allocate_exact_size(vec2(dots, s.row_height - 6.0), Sense::hover());
+                                text(ui.painter(), at.left_center(), at.width() + 1.0, ELLIPSIS, s.font, s.weak);
+                            }
                         }
                         if !last {
-                            let (at, _) = ui.allocate_exact_size(vec2(8.0, s.row_height - 6.0), Sense::hover());
+                            let (at, _) = ui.allocate_exact_size(vec2(CRUMB_SEPARATOR, s.row_height - 6.0), Sense::hover());
                             text(ui.painter(), at.left_center(), at.width(), "›", s.font, s.weak);
                         }
                     }
@@ -335,7 +351,7 @@ impl<'a> PlacesPanel<'a> {
                     }
                 }
                 PlacesContent::Entries(entries) => {
-                    let columns = (((ui.available_width() + TILE_GAP) / (TILE_WIDTH + TILE_GAP)).floor() as usize).max(1);
+                    let columns = (((finite(ui.available_width(), TILE_WIDTH) + TILE_GAP) / (TILE_WIDTH + TILE_GAP)).floor() as usize).max(1);
                     ui.spacing_mut().item_spacing = vec2(TILE_GAP, TILE_GAP);
                     for (row, tiles) in entries.chunks(columns).enumerate() {
                         ui.horizontal(|ui| {
@@ -430,8 +446,7 @@ fn action_row(ui: &mut Ui, s: &PlacesStyle, icon: IconPainter<'_>, which: Places
 }
 
 fn crumb(ui: &mut Ui, s: &PlacesStyle, label: &str, last: bool) -> Response {
-    let font = FontId::proportional(s.font);
-    let width = ui.fonts_mut(|f| f.layout_no_wrap(label.to_owned(), font, s.text).size().x);
+    let width = text_width(ui, s, label);
     let (rect, response) = ui.allocate_exact_size(vec2(width, s.row_height - 6.0), if last { Sense::hover() } else { Sense::click() });
     text(ui.painter(), rect.left_center(), rect.width() + 1.0, label, s.font, if last { s.text } else { s.weak });
     if last {
@@ -464,7 +479,7 @@ fn list_row(ui: &mut Ui, s: &PlacesStyle, icon: IconPainter<'_>, entry: &PlaceEn
     let taken = detail.size().x;
     ui.painter().galley(pos2(rect.right() - PAD - taken, rect.center().y - detail.size().y / 2.0), detail, s.weak);
     text(ui.painter(), pos2(rect.left() + TEXT_X, rect.center().y), rect.width() - TEXT_X - PAD * 2.0 - taken, entry.name, s.font, s.text);
-    response.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, true, entry.name));
+    response.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, true, spoken(entry)));
     response
 }
 
@@ -499,7 +514,7 @@ fn tile(
     text(ui.painter(), pos2(rect.left(), name_y), TILE_WIDTH, entry.name, s.font, s.text);
     let colour = if entry.attention { s.attention } else { s.weak };
     text(ui.painter(), pos2(rect.left(), name_y + (s.font + s.small_font) / 2.0 + 3.0), TILE_WIDTH, entry.detail, s.small_font, colour);
-    response.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, true, entry.name));
+    response.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, true, spoken(entry)));
     response
 }
 
@@ -508,6 +523,44 @@ fn focus_ring(ui: &Ui, s: &PlacesStyle, response: &Response, rect: Rect) {
     if response.has_focus() {
         ui.painter().rect_stroke(rect, CornerRadius::same(s.radius), Stroke::new(1.5, s.accent), StrokeKind::Inside);
     }
+}
+
+/// How wide `label` is in the panel's font.
+fn text_width(ui: &Ui, s: &PlacesStyle, label: &str) -> f32 {
+    ui.fonts_mut(|f| f.layout_no_wrap(label.to_owned(), FontId::proportional(s.font), s.text).size().x)
+}
+
+/// What a screen reader says for an entry: its name and, where there is one, the detail beside
+/// it. "Anna is editing" is not only for people who can see the row.
+fn spoken(entry: &PlaceEntry<'_>) -> String {
+    if entry.detail.is_empty() { entry.name.to_owned() } else { format!("{}, {}", entry.name, entry.detail) }
+}
+
+/// Which breadcrumb steps to draw in `available` width, in order; `None` stands for the steps
+/// left out. A path that does not fit keeps its first step and as many of its last ones as there
+/// is room for, the last always among them.
+fn fit_crumbs(widths: &[f32], between: f32, ellipsis: f32, available: f32) -> Vec<Option<usize>> {
+    let count = widths.len();
+    let all = || (0..count).map(Some).collect();
+    let total = widths.iter().sum::<f32>() + between * count.saturating_sub(1) as f32;
+    let (Some(first), Some(last)) = (widths.first(), widths.last()) else { return all() };
+    if count <= 2 || total <= available {
+        return all();
+    }
+    let mut used = first + between + ellipsis + between + last;
+    let mut tail = count - 1;
+    while tail > 1 {
+        let Some(step) = widths.get(tail - 1) else { break };
+        if used + step + between > available {
+            break;
+        }
+        used += step + between;
+        tail -= 1;
+    }
+    if tail == 1 {
+        return all();
+    }
+    [Some(0), None].into_iter().chain((tail..count).map(Some)).collect()
 }
 
 fn icon_rect(row: Rect) -> Rect {

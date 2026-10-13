@@ -107,8 +107,8 @@ fn the_chosen_place_is_the_only_one_announced_as_selected() {
 fn choosing_an_entry_reports_its_index_in_both_views() {
     for view in [PlacesView::List, PlacesView::Thumbnails] {
         let setup = Setup { view, ..Setup::default() };
-        assert_eq!(press(setup, "2026"), Some(PlacesAction::Activate(0)), "{view:?}: a folder");
-        assert_eq!(press(setup, "Meeting notes.docx"), Some(PlacesAction::Activate(2)), "{view:?}: a file");
+        assert_eq!(press(setup, "2026, folder"), Some(PlacesAction::Activate(0)), "{view:?}: a folder");
+        assert_eq!(press(setup, "Meeting notes.docx, Anna is editing"), Some(PlacesAction::Activate(2)), "{view:?}: a file");
     }
 }
 
@@ -117,8 +117,8 @@ fn thumbnails_wrap_to_the_width_and_keep_their_indices() {
     // Room for one tile beside the places, so the third entry sits on the third row.
     let setup = Setup { view: PlacesView::Thumbnails, size: vec2(400.0, 600.0), ..Setup::default() };
     let (_, full) = frame(&context(), setup, vec![]);
-    assert!(centre(&full, "Meeting notes.docx").y > centre(&full, "Q4 proposal.docx").y + THUMBNAIL_HEIGHT);
-    assert_eq!(press(setup, "Meeting notes.docx"), Some(PlacesAction::Activate(2)));
+    assert!(centre(&full, "Meeting notes.docx, Anna is editing").y > centre(&full, "Q4 proposal.docx, yesterday").y + THUMBNAIL_HEIGHT);
+    assert_eq!(press(setup, "Meeting notes.docx, Anna is editing"), Some(PlacesAction::Activate(2)));
 }
 
 #[test]
@@ -144,11 +144,40 @@ fn every_crumb_but_the_last_can_be_chosen() {
 }
 
 #[test]
+fn an_entry_is_announced_with_its_detail() {
+    let (_, full) = frame(&context(), Setup::default(), vec![]);
+    assert!(node(&full, "Meeting notes.docx, Anna is editing").is_some(), "the status is not only for people who see the row");
+    assert_eq!(spoken(&PlaceEntry { name: "Notes.docx", folder: false, detail: "", attention: false, remote: false }), "Notes.docx");
+}
+
+#[test]
+fn a_path_too_long_for_the_width_keeps_its_first_and_last_steps() {
+    let all = |n: usize| (0..n).map(Some).collect::<Vec<_>>();
+    // Six steps of 50 with 10 between: 350 wide in all.
+    let widths = [50.0; 6];
+    assert_eq!(fit_crumbs(&widths, 10.0, 10.0, 350.0), all(6), "it fits");
+    assert_eq!(fit_crumbs(&widths, 10.0, 10.0, 349.0), [Some(0), None, Some(2), Some(3), Some(4), Some(5)], "one step makes way for the dots");
+    assert_eq!(fit_crumbs(&widths, 10.0, 10.0, 200.0), [Some(0), None, Some(4), Some(5)]);
+    assert_eq!(fit_crumbs(&widths, 10.0, 10.0, 0.0), [Some(0), None, Some(5)], "the last step is never dropped");
+    assert_eq!(fit_crumbs(&[50.0, 50.0], 10.0, 10.0, 0.0), all(2), "two steps have nothing between them to leave out");
+    assert_eq!(fit_crumbs(&[], 10.0, 10.0, 0.0), all(0));
+
+    const DEEP: &[&str] = &["This computer", "Users", "ada", "Documents", "Clients", "Northwind", "Proposals", "2026", "Drafts"];
+    let setup = Setup { crumbs: DEEP, size: vec2(620.0, 400.0), ..Setup::default() };
+    let (_, full) = frame(&context(), setup, vec![]);
+    assert!(node(&full, "This computer").is_some() && node(&full, "Drafts").is_some(), "both ends of the path stay");
+    assert!(node(&full, "Clients").is_none(), "the middle makes way");
+    let right = node(&full, "Drafts").and_then(|n| n.bounds()).map(|b| b.x1).unwrap_or(f64::MAX);
+    assert!(right <= 620.0, "the path stays inside the panel, at {right}");
+    assert_eq!(press(setup, "2026"), Some(PlacesAction::Crumb(7)), "a step keeps its own index when others are left out");
+}
+
+#[test]
 fn loading_and_a_message_stand_in_for_the_entries() {
     for (content, shown) in [(PlacesContent::Loading, "Loading…"), (PlacesContent::Message("This folder is empty."), "This folder is empty.")] {
         let (action, full) = frame(&context(), Setup { content, ..Setup::default() }, vec![]);
         assert!(node(&full, shown).is_some(), "{shown} is shown");
-        assert!(node(&full, "Q4 proposal.docx").is_none(), "no entries beside {shown}");
+        assert!(node(&full, "Q4 proposal.docx, yesterday").is_none(), "no entries beside {shown}");
         assert_eq!(action, None);
     }
 }
