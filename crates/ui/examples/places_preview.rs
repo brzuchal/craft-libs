@@ -4,12 +4,13 @@
 //! Optional: `CRAFT_PREVIEW_FONTS=dir` with `Inter-Regular.ttf` (e.g. WordCraft's `assets/fonts`)
 //! renders in Inter, as the apps do; otherwise egui's default font is used.
 //!
-//! The navigation column, the menu bar, the New and Open buttons, the other menu items and the
-//! thumbnail pictures are a mock drawn in this file only; the panel and the places in the menu are
-//! the real component.
+//! The menu bar, the New and Open buttons, the other menu items, the icons of the File column and
+//! the thumbnail pictures are a mock drawn in this file only; the panel, the places in the menu and
+//! the File page's navigation column are the real components.
 
 use std::path::{Path, PathBuf};
 
+use craft_ui::file_nav::{FileNav, FileNavItem, FileNavStyle};
 use craft_ui::places::{self, Place, PlaceEntry, PlaceKind, PlacesContent, PlacesLabels, PlacesPanel, PlacesStyle, PlacesView};
 use egui::{Align2, Color32, CornerRadius, FontId, Painter, Rect, Stroke, UiBuilder, pos2, vec2};
 
@@ -135,8 +136,29 @@ fn draw(ui: &mut egui::Ui, scene: &mut Scene) {
     let places = if scene.accounts { WITH_ACCOUNTS } else { LOCAL };
     match scene.host {
         Host::Office => {
-            let nav = Rect::from_min_size(full.min, vec2(120.0, full.height()));
-            navigation(ui.painter(), nav, scene.accounts);
+            let nav_style = FileNavStyle {
+                width: 160.0,
+                row_height: 26.0,
+                foot_row_height: 22.0,
+                font: FontId::proportional(13.0),
+                selected_font: FontId::proportional(13.0),
+                foot_font: FontId::proportional(12.0),
+                ..FileNavStyle::on_accent(ACCENT)
+            };
+            let nav = Rect::from_min_size(full.min, vec2(nav_style.width, full.height()));
+            let item = |key, label| FileNavItem { key, label };
+            let top = [item("home", "Home"), item("new", "New"), item("open", "Open")];
+            let mut rest = vec![item("info", "Info"), item("save", "Save"), item("saveAs", "Save as")];
+            let mut foot = vec![item("options", "Options")];
+            if scene.accounts {
+                rest.push(item("share", "Share"));
+                foot.push(item("accounts", "Accounts"));
+            }
+            rest.extend([item("print", "Print"), item("export", "Export")]);
+            foot.push(item("about", "About"));
+            ui.scope_builder(UiBuilder::new().max_rect(nav), |ui| {
+                FileNav::new("Back", &[&top, &rest], Some("open"), &nav_style, &glyph).foot(&foot).show(ui);
+            });
             let (selected, crumbs, entries): (usize, &[&str], _) =
                 if scene.accounts { (1, &["Work", "Documents", "Proposals"], WORK_DOCUMENTS) } else { (0, &["Recent"], RECENT_DOCUMENTS) };
             ui.scope_builder(UiBuilder::new().max_rect(Rect::from_min_max(nav.right_top(), full.max)), |ui| {
@@ -191,29 +213,39 @@ fn draw(ui: &mut egui::Ui, scene: &mut Scene) {
     }
 }
 
-/// The File page's navigation column of an Office-style app.
-fn navigation(p: &Painter, rect: Rect, accounts: bool) {
-    p.rect_filled(rect, CornerRadius::ZERO, ACCENT);
-    let mut items = vec!["←", "New", "Open", "Save as"];
-    if accounts {
-        items.push("Share");
-    }
-    items.extend(["Print", "Export"]);
-    for (i, item) in items.iter().enumerate() {
-        let row = Rect::from_min_size(rect.min + vec2(0.0, 10.0 + i as f32 * 30.0), vec2(rect.width(), 30.0));
-        if *item == "Open" {
-            p.rect_filled(row, CornerRadius::ZERO, Color32::from_black_alpha(60));
-            p.rect_filled(Rect::from_min_size(row.min, vec2(3.0, row.height())), CornerRadius::ZERO, Color32::WHITE);
+/// Stand-in icons for the File column; a real app paints its own set here.
+fn glyph(key: Option<&str>, p: &Painter, r: Rect, c: Color32) {
+    let stroke = Stroke::new(1.4, c);
+    let at = |x: f32, y: f32| pos2(r.left() + x * r.width(), r.top() + y * r.height());
+    let line = |points: &[(f32, f32)]| egui::Shape::line(points.iter().map(|&(x, y)| at(x, y)).collect(), stroke);
+    match key {
+        None => drop(p.add(line(&[(0.62, 0.2), (0.34, 0.5), (0.62, 0.8)]))),
+        Some("home") => drop(p.add(line(&[(0.15, 0.5), (0.5, 0.16), (0.85, 0.5), (0.85, 0.86), (0.15, 0.86), (0.15, 0.5)]))),
+        Some("new") => places::paint_icon(places::PlacesIcon::File, p, r, c),
+        Some("open") => places::paint_icon(places::PlacesIcon::Folder, p, r, c),
+        Some("save" | "saveAs") => {
+            p.add(line(&[(0.16, 0.16), (0.7, 0.16), (0.86, 0.32), (0.86, 0.86), (0.16, 0.86), (0.16, 0.16)]));
+            p.add(line(&[(0.32, 0.86), (0.32, 0.58), (0.7, 0.58), (0.7, 0.86)]));
         }
-        p.text(pos2(row.left() + 16.0, row.center().y), Align2::LEFT_CENTER, *item, FontId::proportional(13.0), Color32::WHITE);
-    }
-    let mut foot = vec!["Options"];
-    if accounts {
-        foot.insert(0, "Accounts");
-    }
-    for (i, item) in foot.iter().enumerate() {
-        let y = rect.bottom() - 24.0 - i as f32 * 30.0;
-        p.text(pos2(rect.left() + 16.0, y), Align2::LEFT_CENTER, *item, FontId::proportional(13.0), Color32::WHITE);
+        Some("print") => {
+            p.add(line(&[(0.3, 0.38), (0.3, 0.14), (0.7, 0.14), (0.7, 0.38)]));
+            p.add(line(&[(0.3, 0.7), (0.14, 0.7), (0.14, 0.38), (0.86, 0.38), (0.86, 0.7), (0.7, 0.7)]));
+            p.add(line(&[(0.3, 0.58), (0.7, 0.58), (0.7, 0.88), (0.3, 0.88), (0.3, 0.58)]));
+        }
+        Some("export" | "share") => {
+            p.add(line(&[(0.5, 0.64), (0.5, 0.14)]));
+            p.add(line(&[(0.32, 0.32), (0.5, 0.14), (0.68, 0.32)]));
+            p.add(line(&[(0.18, 0.56), (0.18, 0.86), (0.82, 0.86), (0.82, 0.56)]));
+        }
+        Some("options") => {
+            p.circle_stroke(r.center(), r.width() * 0.36, stroke);
+            p.circle_stroke(r.center(), r.width() * 0.12, stroke);
+        }
+        Some(_) => {
+            p.circle_stroke(r.center(), r.width() * 0.36, stroke);
+            p.add(line(&[(0.5, 0.46), (0.5, 0.7)]));
+            p.circle_filled(at(0.5, 0.32), 1.0, c);
+        }
     }
 }
 

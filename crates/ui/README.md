@@ -5,6 +5,7 @@ embedded SVG catalogs; `buttons` paints accessible icon buttons; `tabs` handles 
 interaction; `layout` provides toolbar fitting, split geometry and resize handles; `theme` shares widget-state styling.
 `docking` supplies transactional panel moves and an optional docking surface.
 `printing` supplies printer/job controls and asynchronous feedback used by WordCraft and GridCraft.
+`file_nav` is the navigation column of the Office-style apps' File page.
 `places` is the panel an app opens documents from and saves them to, with or without remote storage.
 The current delivery covers nine creative apps (DesignCraft, VectorCraft, PhotoCraft, FilmCraft, EffectCraft, CADCraft, PDFCraft, LightCraft and SoundCraft); prior basic and office adapters are separate. The [suite audit](../../docs/ui-components-audit.md#adoption-and-acceptance)
 records their scope and acceptance limits. Assets, complete themes, localization and command handling
@@ -232,6 +233,44 @@ host submit callback and keep active work alive when closing a window. Queue-def
 represented by `None`, independently of explicit one-sided, long-edge or short-edge choices.
 Receipts and backend errors remain unmodified data for the app to display. These controls work
 on WASM too; browser PDF printing remains an app-owned service.
+
+## File page navigation
+
+`file_nav::FileNav` is the column down the left of the File page in the Office-style apps: a
+labelled Back, the pages in groups with a rule between them, and a foot for Options and About.
+WordCraft, GridCraft and DeckCraft show the same column, each in its own colour. The `office`
+renders of `places_preview` show it beside the places panel.
+
+```rust
+use craft_ui::file_nav::{FileNav, FileNavAction, FileNavItem, FileNavStyle};
+
+fn column(ui: &mut egui::Ui, showing: &'static str, accent: egui::Color32, title_bar: f32) {
+    let style = FileNavStyle::on_accent(accent);
+    let item = |key, label| FileNavItem { key, label };
+    let top = [item("home", "Home"), item("new", "New"), item("open", "Open")];
+    let rest = [item("info", "Info"), item("save", "Save"), item("print", "Print"), item("export", "Export")];
+    let foot = [item("options", "Options"), item("about", "About")];
+    let icons = |_key: Option<&str>, _painter: &egui::Painter, _rect: egui::Rect, _colour: egui::Color32| { /* the app's own icon; `None` is Back */ };
+    match FileNav::new("Back", &[&top, &rest], Some(showing), &style, &icons).foot(&foot).title_band(title_bar).show(ui).action {
+        Some(FileNavAction::Back) => { /* leave the File page */ }
+        Some(FileNavAction::Choose(page)) => { /* show that page, or run Save */ }
+        Some(FileNavAction::DragWindow) => ui.ctx().send_viewport_cmd(egui::ViewportCommand::StartDrag),
+        None => {}
+    }
+}
+```
+
+- **Back is a row.** It has a label and an icon like every other entry, and it comes first.
+- **The title band.** Where the File page covers the title bar (macOS), `title_band` leaves a band
+  of that height above Back for the window buttons. It holds nothing else and reports
+  `FileNavAction::DragWindow`. Elsewhere pass 0 and the column starts with Back.
+- **Keys.** `K` is whatever the app names its pages with (`&str`, an enum); it comes back in
+  `FileNavAction::Choose`. The page that is showing is marked, and announced as chosen.
+- **Too little room.** A label longer than the column ends in an ellipsis and is whole in its
+  tip. A column too short for its entries puts the foot after the pages and scrolls.
+- **Colour.** `FileNavStyle::on_accent` fills the column with the app's colour;
+  `FileNavStyle::from_visuals` is a neutral column with the accent only on the chosen page.
+  Fonts are `FontId`s in the style, so the app's own faces apply.
 
 ## Places panel
 
