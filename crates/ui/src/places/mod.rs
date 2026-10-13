@@ -514,7 +514,9 @@ fn notice(ui: &mut Ui, s: &PlacesStyle, icon: IconPainter<'_>, what: &PlacesNoti
             }
             if let Some(label) = what.action {
                 ui.add_space(14.0);
-                pressed = ui.add(egui::Button::new(egui::RichText::new(label).size(s.font)).min_size(vec2(96.0, s.row_height))).clicked();
+                // Room either side of the label: a button hugging its text reads as a tag.
+                ui.spacing_mut().button_padding = vec2(20.0, 4.0);
+                pressed = ui.add(egui::Button::new(egui::RichText::new(label).size(s.font)).min_size(vec2(112.0, s.row_height))).clicked();
             }
         });
     });
