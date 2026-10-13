@@ -23,6 +23,15 @@ mod zoom;
 
 pub use zoom::{ZoomBar, ZoomBarLabels, ZoomBarResponse, ZoomBarStyle};
 
+/// A number typed into the value field, with or without its suffix. The suffix itself is taken
+/// off first, so one with a digit in it (`24fps`) is not cut short; then whatever is left of a
+/// half-typed one. A decimal comma counts as a point.
+fn parse_typed(text: &str, suffix: &str) -> Option<f64> {
+    let t = text.trim();
+    let t = if suffix.is_empty() { t } else { t.strip_suffix(suffix).unwrap_or(t) };
+    t.trim_end_matches(|c: char| !c.is_ascii_digit()).trim().replace(',', ".").parse().ok()
+}
+
 #[cfg(test)]
 mod tests;
 
@@ -206,6 +215,8 @@ impl<'a> Slider<'a> {
             }
 
             let (mut down, mut up) = (0i32, 0i32);
+            // Home and End go straight to an end of the range instead of counting steps.
+            let mut jump = None;
             if response.has_focus() {
                 ui.memory_mut(|m| {
                     m.set_focus_lock_filter(response.id, EventFilter { horizontal_arrows: true, vertical_arrows: true, ..Default::default() })
@@ -214,10 +225,10 @@ impl<'a> Slider<'a> {
                     down += i.num_presses(Key::ArrowLeft) as i32 + i.num_presses(Key::ArrowDown) as i32 + 10 * i.num_presses(Key::PageDown) as i32;
                     up += i.num_presses(Key::ArrowRight) as i32 + i.num_presses(Key::ArrowUp) as i32 + 10 * i.num_presses(Key::PageUp) as i32;
                     if i.key_pressed(Key::Home) {
-                        down += 1_000_000;
+                        jump = Some(*self.range.start());
                     }
                     if i.key_pressed(Key::End) {
-                        up += 1_000_000;
+                        jump = Some(*self.range.end());
                     }
                 });
             }
@@ -227,10 +238,11 @@ impl<'a> Slider<'a> {
                 up += i.num_accesskit_action_requests(response.id, Action::Increment) as i32;
             });
             let steps = up - down;
-            if steps != 0 {
-                let v = match self.step {
-                    Some(s) => self.snap(*self.value + f64::from(steps) * s),
-                    None => self.value_at(self.fraction(*self.value) + f64::from(steps) * 0.01),
+            if steps != 0 || jump.is_some() {
+                let v = match (jump, self.step) {
+                    (Some(end), _) => self.snap(end),
+                    (None, Some(s)) => self.snap(*self.value + f64::from(steps) * s),
+                    (None, None) => self.value_at(self.fraction(*self.value) + f64::from(steps) * 0.01),
                 };
                 if v != *self.value {
                     *self.value = v;
@@ -280,6 +292,7 @@ impl<'a> Slider<'a> {
                 .map(|v| ui.fonts_mut(|f| f.layout_no_wrap(self.text(*v, decimals, suffix), font.clone(), Color32::WHITE).size().x))
                 .fold(0.0f32, f32::max);
             let suffix_owned = suffix.to_string();
+            let typed_suffix = suffix.trim().to_string();
             let range = self.range.clone();
             let mut v = *self.value;
             let field = ui.add_sized(
@@ -288,7 +301,7 @@ impl<'a> Slider<'a> {
                     .range(range)
                     .speed(0.0)
                     .custom_formatter(move |v, _| format!("{v:.decimals$}{suffix_owned}"))
-                    .custom_parser(|t| t.trim().trim_end_matches(|c: char| !c.is_ascii_digit()).trim().replace(',', ".").parse().ok()),
+                    .custom_parser(move |t| parse_typed(t, &typed_suffix)),
             );
             if field.changed() {
                 let v = self.snap(v);
