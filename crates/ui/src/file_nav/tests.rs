@@ -85,8 +85,42 @@ fn a_title_band_keeps_back_clear_of_the_window_buttons_and_drags_the_window() {
     let ctx = context();
     let (from, to) = (pos2(100.0, 14.0), pos2(140.0, 20.0));
     frame(&ctx, 28.0, 700.0, vec![]);
-    frame(&ctx, 28.0, 700.0, vec![egui::Event::PointerMoved(from), click(from, true)]);
-    assert_eq!(frame(&ctx, 28.0, 700.0, vec![egui::Event::PointerMoved(to)]).0, Some(FileNavAction::DragWindow));
+    // A band that only drags starts the drag on the press itself, or on the first move after it.
+    let pressed = frame(&ctx, 28.0, 700.0, vec![egui::Event::PointerMoved(from), click(from, true)]).0;
+    let moved = frame(&ctx, 28.0, 700.0, vec![egui::Event::PointerMoved(to)]).0;
+    assert_eq!(pressed.or(moved), Some(FileNavAction::DragWindow));
+}
+
+fn key(key: egui::Key) -> Vec<egui::Event> {
+    let event = |pressed| egui::Event::Key { key, physical_key: None, pressed, repeat: false, modifiers: egui::Modifiers::NONE };
+    vec![event(true), event(false)]
+}
+
+/// Tab into the column, press the keys one frame each, then Enter: what the focused row does.
+fn walk_then_enter(band: f32, keys: &[egui::Key]) -> Option<FileNavAction<&'static str>> {
+    let ctx = context();
+    frame(&ctx, band, 700.0, vec![]);
+    frame(&ctx, band, 700.0, key(egui::Key::Tab));
+    // The column keeps the arrow keys from the frame after a row has the focus.
+    frame(&ctx, band, 700.0, vec![]);
+    for k in keys {
+        frame(&ctx, band, 700.0, key(*k));
+    }
+    frame(&ctx, band, 700.0, key(egui::Key::Enter)).0
+}
+
+#[test]
+fn the_arrow_keys_walk_the_entries_and_enter_chooses() {
+    use egui::Key::{ArrowDown as Down, ArrowUp as Up, End, Home};
+    assert_eq!(walk_then_enter(0.0, &[]), Some(FileNavAction::Back), "Tab reaches Back first");
+    assert_eq!(walk_then_enter(28.0, &[]), Some(FileNavAction::Back), "the title band is no stop on the way");
+    assert_eq!(walk_then_enter(0.0, &[Down, Down]), Some(FileNavAction::Choose("new")));
+    assert_eq!(walk_then_enter(0.0, &[Down, Down, Down, Down]), Some(FileNavAction::Choose("info")), "across the rule into the next group");
+    assert_eq!(walk_then_enter(0.0, &[Down, Down, Down, Down, Down, Down]), Some(FileNavAction::Choose("options")), "and on into the foot");
+    assert_eq!(walk_then_enter(0.0, &[Up]), Some(FileNavAction::Choose("about")), "up from the first wraps to the last");
+    assert_eq!(walk_then_enter(0.0, &[Up, Down]), Some(FileNavAction::Back), "and down from the last wraps to the first");
+    assert_eq!(walk_then_enter(0.0, &[End]), Some(FileNavAction::Choose("about")));
+    assert_eq!(walk_then_enter(0.0, &[End, Up, Home]), Some(FileNavAction::Back));
 }
 
 #[test]

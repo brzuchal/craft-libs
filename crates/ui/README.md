@@ -264,6 +264,8 @@ fn column(ui: &mut egui::Ui, showing: &'static str, accent: egui::Color32, title
 - **The title band.** Where the File page covers the title bar (macOS), `title_band` leaves a band
   of that height above Back for the window buttons. It holds nothing else and reports
   `FileNavAction::DragWindow`. Elsewhere pass 0 and the column starts with Back.
+- **Keyboard.** Tab reaches every entry, Up and Down walk them and wrap at the ends, Home and
+  End reach the ends, and Enter or Space chooses the entry in focus. The title band is not a stop.
 - **Keys.** `K` is whatever the app names its pages with (`&str`, an enum); it comes back in
   `FileNavAction::Choose`. The page that is showing is marked, and announced as chosen.
 - **Too little room.** A label longer than the column ends in an ellipsis and is whole in its

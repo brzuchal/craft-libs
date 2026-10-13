@@ -5,6 +5,8 @@
 //! The application owns the pages, their labels in the interface language and their icons, and
 //! decides what each choice does. The column draws them and reports a [`FileNavAction`].
 //!
+//! Tab reaches every entry, Up and Down walk them, and Enter or Space chooses the one in focus.
+//!
 //! On macOS the File page covers the title bar, so the column starts with a band the height of
 //! that bar ([`FileNav::title_band`]): it is left to the window buttons and drags the window.
 //! Elsewhere the window buttons are on the right and the column starts with Back.
@@ -165,51 +167,61 @@ impl<'a, K: Copy + PartialEq> FileNav<'a, K> {
             ui.set_clip_rect(rect.intersect(ui.clip_rect()));
             ui.spacing_mut().item_spacing = vec2(0.0, 0.0);
             if title_band > 0.0 {
-                let (_, band) = ui.allocate_exact_size(vec2(s.width, title_band), Sense::click_and_drag());
+                // Dragged, never focused: a band with nothing in it is no stop for the Tab key.
+                let (_, band) = ui.allocate_exact_size(vec2(s.width, title_band), Sense::DRAG);
                 if band.drag_started() {
                     action = Some(FileNavAction::DragWindow);
                 }
             } else {
                 ui.add_space(s.padding);
             }
+            // The rows from the top down, whatever order they are drawn in.
+            let mut order: Vec<egui::Id> = Vec::with_capacity(1 + entries + foot.len());
             let mut entry = |ui: &mut Ui, item: &FileNavItem<'_, K>, height: f32, font: &FontId| {
                 let showing = selected == Some(item.key);
                 let font = if showing && height == s.row_height { &s.selected_font } else { font };
-                if row(ui, s, icons, Some(item.key), item.label, Some(showing), height, font).clicked() {
+                let response = row(ui, s, icons, Some(item.key), item.label, Some(showing), height, font);
+                if response.clicked() {
                     action = Some(FileNavAction::Choose(item.key));
                 }
+                response.id
             };
             let mut back_clicked = false;
-            let mut pages_and = |ui: &mut Ui, foot_follows: bool| {
-                back_clicked |= row(ui, s, icons, None, back, None, s.row_height, &s.font).clicked();
+            let mut pages_and = |ui: &mut Ui, order: &mut Vec<egui::Id>, foot_follows: bool| {
+                let response = row(ui, s, icons, None, back, None, s.row_height, &s.font);
+                back_clicked |= response.clicked();
+                order.push(response.id);
                 for group in groups {
                     rule(ui, s);
                     for item in *group {
-                        entry(ui, item, s.row_height, &s.font);
+                        order.push(entry(ui, item, s.row_height, &s.font));
                     }
                 }
                 if foot_follows {
                     rule(ui, s);
                     for item in foot {
-                        entry(ui, item, s.foot_row_height, &s.foot_font);
+                        order.push(entry(ui, item, s.foot_row_height, &s.foot_font));
                     }
                     ui.add_space(s.padding);
                 }
             };
             if fits {
-                pages_and(ui, false);
+                pages_and(ui, &mut order, false);
+                let mut from_the_bottom = Vec::with_capacity(foot.len());
                 ui.with_layout(Layout::bottom_up(Align::Min), |ui| {
                     ui.add_space(s.padding);
                     for item in foot.iter().rev() {
-                        entry(ui, item, s.foot_row_height, &s.foot_font);
+                        from_the_bottom.push(entry(ui, item, s.foot_row_height, &s.foot_font));
                     }
                 });
+                order.extend(from_the_bottom.into_iter().rev());
             } else {
-                egui::ScrollArea::vertical().id_salt("craft-ui/file-nav").auto_shrink([false, false]).show(ui, |ui| pages_and(ui, true));
+                egui::ScrollArea::vertical().id_salt("craft-ui/file-nav").auto_shrink([false, false]).show(ui, |ui| pages_and(ui, &mut order, true));
             }
             if back_clicked {
                 action = Some(FileNavAction::Back);
             }
+            walk(ui, &order);
         });
         FileNavResponse { action, response }
     }
@@ -248,6 +260,38 @@ fn row<K: Copy>(
         None => egui::WidgetInfo::labeled(egui::WidgetType::Button, true, label),
     });
     if cut { response.on_hover_text(label) } else { response }
+}
+
+/// Up and Down walk the rows and wrap at the ends, Home and End reach the ends, as in a menu.
+/// While one of the rows has the focus the column keeps those keys, so the focus does not jump
+/// to whatever lies nearest on the page beside it.
+fn walk(ui: &Ui, order: &[egui::Id]) {
+    let Some(at) = order.iter().position(|id| ui.memory(|m| m.has_focus(*id))) else { return };
+    let Some(focused) = order.get(at).copied() else { return };
+    ui.memory_mut(|m| m.set_focus_lock_filter(focused, egui::EventFilter { vertical_arrows: true, ..Default::default() }));
+    let count = order.len();
+    let to = ui.input_mut(|i| {
+        let mut pressed = |key| i.consume_key(egui::Modifiers::NONE, key);
+        if pressed(egui::Key::ArrowDown) {
+            Some((at + 1) % count)
+        } else if pressed(egui::Key::ArrowUp) {
+            Some((at + count - 1) % count)
+        } else if pressed(egui::Key::Home) {
+            Some(0)
+        } else if pressed(egui::Key::End) {
+            Some(count - 1)
+        } else {
+            None
+        }
+    });
+    if let Some(next) = to.and_then(|i| order.get(i)).copied() {
+        ui.memory_mut(|m| {
+            // egui has seen the same key and would move the focus once more at the end of the
+            // frame, from the row it is about to get here.
+            m.move_focus(egui::FocusDirection::None);
+            m.request_focus(next);
+        });
+    }
 }
 
 fn rule(ui: &mut Ui, s: &FileNavStyle) {
