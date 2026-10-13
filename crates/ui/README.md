@@ -318,8 +318,9 @@ fn open_page(ui: &mut egui::Ui, places: &[Place<'_>], selected: usize, entries: 
 - **Text.** A long name is cut with an ellipsis and never pushes the detail beside it ("Anna is
   editing", "shared by Tom · view only") out of sight. The app supplies every string, and its own
   glyphs through `icons` when the built-in line icons do not match its set.
-- **Accent.** The app's accent marks the chosen place and file icons; `PlacesStyle::from_visuals`
-  takes it from `selection.bg_fill`.
+- **Accent.** The app's accent marks state only: the chosen place, the focus ring and the hovered
+  thumbnail. Icons keep one colour, the same in every app. `PlacesStyle::from_visuals` takes the
+  accent from `selection.bg_fill`.
 
 ## Compatibility and checks
 

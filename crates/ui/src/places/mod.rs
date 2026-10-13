@@ -26,8 +26,9 @@ pub struct PlacesStyle {
     pub hover: Color32,
     /// The chosen place's row.
     pub selected: Color32,
-    /// The chosen place's icon, file icons and the hovered thumbnail's outline: state and
-    /// navigation, which is where the app's accent belongs.
+    /// The app's accent, for state only: the focus ring and the hovered thumbnail's outline, and
+    /// through [`PlacesStyle::selected`] the chosen place. It never colours an icon: icons look
+    /// the same in every app.
     pub accent: Color32,
     pub icon: Color32,
     /// An entry's detail that needs noticing, such as somebody else editing it.
@@ -413,7 +414,7 @@ fn place_row(ui: &mut Ui, s: &PlacesStyle, icon: IconPainter<'_>, place: &Place<
         PlaceKind::Local => PlacesIcon::Local,
         PlaceKind::Other => PlacesIcon::Other,
     };
-    icon(which, ui.painter(), icon_rect(rect), if selected { s.accent } else { s.icon });
+    icon(which, ui.painter(), icon_rect(rect), s.icon);
     let (x, width) = (rect.left() + TEXT_X, rect.width() - TEXT_X - PAD);
     match place.detail {
         Some(detail) => {
@@ -471,8 +472,8 @@ fn list_row(ui: &mut Ui, s: &PlacesStyle, icon: IconPainter<'_>, entry: &PlaceEn
     }
     ui.painter().hline(rect.x_range(), rect.bottom() - 0.5, Stroke::new(1.0, s.border.gamma_multiply(0.6)));
     focus_ring(ui, s, &response, rect);
-    let (which, colour) = if entry.folder { (PlacesIcon::Folder, s.icon) } else { (PlacesIcon::File, s.accent) };
-    icon(which, ui.painter(), icon_rect(rect), colour);
+    let which = if entry.folder { PlacesIcon::Folder } else { PlacesIcon::File };
+    icon(which, ui.painter(), icon_rect(rect), s.icon);
     // The detail keeps its place at the right edge and the name gives way: a long name must not
     // push "Anna is editing" out of sight.
     let detail = galley(ui.painter(), rect.width() * 0.5, entry.detail, s.small_font + 0.5, if entry.attention { s.attention } else { s.weak });
@@ -500,12 +501,12 @@ fn tile(
     match thumbnails {
         _ if entry.folder => icon(PlacesIcon::Folder, ui.painter(), glyph, s.icon),
         Some(paint) => paint(index, &ui.painter().with_clip_rect(picture.intersect(ui.clip_rect())), picture),
-        None => icon(PlacesIcon::File, ui.painter(), glyph, s.accent),
+        None => icon(PlacesIcon::File, ui.painter(), glyph, s.icon),
     }
     if entry.remote {
         let badge = Rect::from_min_size(picture.max - vec2(26.0, 26.0), vec2(20.0, 20.0));
         ui.painter().rect_filled(badge, CornerRadius::same(4), s.fill);
-        icon(PlacesIcon::Account, ui.painter(), badge.shrink(3.0), s.accent);
+        icon(PlacesIcon::Account, ui.painter(), badge.shrink(3.0), s.icon);
     }
     if response.hovered() || response.has_focus() {
         ui.painter().rect_stroke(picture, radius, Stroke::new(1.5, s.accent), StrokeKind::Inside);
