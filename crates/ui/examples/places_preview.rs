@@ -11,7 +11,7 @@
 use std::path::{Path, PathBuf};
 
 use craft_ui::file_nav::{FileNav, FileNavItem, FileNavStyle};
-use craft_ui::places::{self, Place, PlaceEntry, PlaceKind, PlacesContent, PlacesLabels, PlacesPanel, PlacesStyle, PlacesView};
+use craft_ui::places::{self, Place, PlaceEntry, PlaceKind, PlacesContent, PlacesLabels, PlacesNotice, PlacesPanel, PlacesStyle, PlacesView};
 use egui::{Align2, Color32, CornerRadius, FontId, Painter, Rect, Stroke, UiBuilder, pos2, vec2};
 
 const ACCENT: Color32 = Color32::from_rgb(0x3B, 0x5B, 0xDB);
@@ -63,8 +63,8 @@ enum Host {
     Home,
     /// A classic File menu.
     Menu,
-    /// The panel alone, still asking for the entries.
-    Loading,
+    /// The panel alone, at a folder the system will not let the app read.
+    Denied,
     /// The panel alone, with nothing to list.
     Empty,
 }
@@ -101,7 +101,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
     }
-    for (host, name) in [(Host::Loading, "loading"), (Host::Empty, "empty")] {
+    for (host, name) in [(Host::Denied, "denied"), (Host::Empty, "empty")] {
         for (dark, theme) in [(false, "light"), (true, "dark")] {
             render(&out.join(format!("{name}-{theme}.png")), fonts.as_deref(), Scene { host, dark, accounts: true })?;
         }
@@ -206,9 +206,20 @@ fn draw(ui: &mut egui::Ui, scene: &mut Scene) {
                 let _ = ui.add(egui::Button::new("Save as…").shortcut_text("⇧⌘S"));
             });
         }
-        Host::Loading | Host::Empty => {
-            let content = if scene.host == Host::Loading { PlacesContent::Loading } else { PlacesContent::Message("This folder is empty.") };
-            PlacesPanel::new(places, Some(2), content, &style, LABELS).crumbs(&["Personal", "Drafts"]).add_place(true).show(ui);
+        Host::Denied | Host::Empty => {
+            let what = if scene.host == Host::Denied {
+                PlacesNotice {
+                    icon: places::PlacesIcon::Locked,
+                    title: "No access to this folder",
+                    body: "The system has not allowed the app to read it. Browse opens a document from it; to list it here, allow the app in System Settings.",
+                    action: Some("Browse…"),
+                }
+            } else {
+                PlacesNotice { icon: places::PlacesIcon::Folder, title: "This folder is empty", body: "", action: None }
+            };
+            let crumbs: &[&str] = if scene.host == Host::Denied { &["This computer", "Users", "ada", "Documents"] } else { &["Personal", "Drafts"] };
+            let selected = if scene.host == Host::Denied { 3 } else { 2 };
+            PlacesPanel::new(places, Some(selected), PlacesContent::Notice(what), &style, LABELS).crumbs(crumbs).add_place(true).show(ui);
         }
     }
 }

@@ -306,6 +306,10 @@ fn open_page(ui: &mut egui::Ui, places: &[Place<'_>], selected: usize, entries: 
   the places and entries it has and acts on the `PlacesAction` it gets back; indices point into
   the slices passed that frame. `PlacesContent::Loading` and `PlacesContent::Message` stand in
   while the app is still asking, or has nothing to list.
+- **Nothing to list.** `PlacesContent::Notice` says why properly: an icon, a short title, a
+  sentence or two and, where the user can act, a button that reports `PlacesAction::Notice`. Use
+  it for an empty folder, a folder that is gone, or one the system will not let the app read.
+  Running text keeps to a readable width however wide the page is.
 - **With or without remote storage.** An app without it passes no account places and leaves
   `add_place` off, and nothing else changes. "Add a place" is off by default: a control that
   cannot work is worse than none.

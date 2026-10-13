@@ -182,6 +182,37 @@ fn loading_and_a_message_stand_in_for_the_entries() {
     }
 }
 
+const NO_ACCESS: PlacesNotice<'static> = PlacesNotice {
+    icon: PlacesIcon::Locked,
+    title: "No access to this folder",
+    body: "The system has not allowed the app to read it. Browse opens a document from it.",
+    action: Some("Open another way"),
+};
+
+#[test]
+fn a_notice_says_why_and_offers_its_button() {
+    let setup = Setup { content: PlacesContent::Notice(NO_ACCESS), ..Setup::default() };
+    let (action, full) = frame(&context(), setup, vec![]);
+    assert_eq!(action, None);
+    assert!(node(&full, NO_ACCESS.title).is_some() && node(&full, NO_ACCESS.body).is_some());
+    assert!(node(&full, "Q4 proposal.docx, yesterday").is_none(), "a notice stands in for the entries");
+    assert_eq!(press(setup, "Open another way"), Some(PlacesAction::Notice));
+
+    let quiet = PlacesNotice { body: "", action: None, ..NO_ACCESS };
+    let (_, full) = frame(&context(), Setup { content: PlacesContent::Notice(quiet), ..Setup::default() }, vec![]);
+    assert!(node(&full, NO_ACCESS.title).is_some() && node(&full, "Open another way").is_none(), "no button without something to do");
+}
+
+#[test]
+fn running_text_keeps_to_a_readable_width() {
+    const LONG: &str = "A sentence long enough to run right across a very wide window if nothing held it back, which makes it hard to find the start of the next line.";
+    for content in [PlacesContent::Message(LONG), PlacesContent::Notice(PlacesNotice { body: LONG, ..NO_ACCESS })] {
+        let (_, full) = frame(&context(), Setup { content, size: vec2(2400.0, 600.0), ..Setup::default() }, vec![]);
+        let b = node(&full, LONG).expect("the text").bounds().expect("bounds");
+        assert!(b.x1 - b.x0 <= f64::from(READING_WIDTH) + 1.0, "{} wide", b.x1 - b.x0);
+    }
+}
+
 #[test]
 fn nothing_is_reported_without_input() {
     let ctx = context();

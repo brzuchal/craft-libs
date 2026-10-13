@@ -109,9 +109,23 @@ pub enum PlacesContent<'a> {
     Entries(&'a [PlaceEntry<'a>]),
     /// The application is still asking; shows [`PlacesLabels::loading`].
     Loading,
-    /// Nothing to list, with the reason in the interface language: an empty folder, a place that
-    /// could not be reached, the hint that Browse opens the system dialog.
+    /// Nothing to list, with the reason in one plain line in the interface language.
     Message(&'a str),
+    /// Nothing to list, said properly: see [`PlacesNotice`].
+    Notice(PlacesNotice<'a>),
+}
+
+/// Why there is nothing to list, and what to do about it: an icon, a short title, a sentence or
+/// two and, where the user can act, a button. For an empty folder, a folder that is gone, or one
+/// the system will not let the app read.
+#[derive(Clone, Copy, Debug)]
+pub struct PlacesNotice<'a> {
+    pub icon: PlacesIcon,
+    pub title: &'a str,
+    /// Empty for none.
+    pub body: &'a str,
+    /// The label of a button under the text; pressing it reports [`PlacesAction::Notice`].
+    pub action: Option<&'a str>,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -142,6 +156,8 @@ pub enum PlacesIcon {
     Browse,
     Folder,
     File,
+    /// A place or folder that is closed to the app.
+    Locked,
 }
 
 /// What the user asked for. Indices point into the slices the panel was given this frame.
@@ -156,6 +172,8 @@ pub enum PlacesAction {
     AddPlace,
     /// Show the system's own file dialog.
     Browse,
+    /// The button of a [`PlacesNotice`] was pressed.
+    Notice,
 }
 
 /// What happened this frame.
@@ -343,6 +361,11 @@ impl<'a> PlacesPanel<'a> {
             ScrollArea::vertical().id_salt("craft-ui/places/content").auto_shrink([false, false]).show(ui, |ui| match content {
                 PlacesContent::Loading => message(ui, s, labels.loading),
                 PlacesContent::Message(why) => message(ui, s, why),
+                PlacesContent::Notice(what) => {
+                    if notice(ui, s, &icon, &what) {
+                        action = Some(PlacesAction::Notice);
+                    }
+                }
                 PlacesContent::Entries(entries) if view == PlacesView::List => {
                     ui.spacing_mut().item_spacing = vec2(0.0, 0.0);
                     for (i, entry) in entries.iter().enumerate() {
@@ -461,8 +484,41 @@ fn crumb(ui: &mut Ui, s: &PlacesStyle, label: &str, last: bool) -> Response {
     response.on_hover_cursor(CursorIcon::PointingHand)
 }
 
+/// The widest a line of running text gets: past this a sentence is hard to follow back.
+const READING_WIDTH: f32 = 440.0;
+
 fn message(ui: &mut Ui, s: &PlacesStyle, why: &str) {
-    ui.add(egui::Label::new(egui::RichText::new(why).size(s.font).color(s.weak)).selectable(false));
+    ui.allocate_ui(vec2(READING_WIDTH.min(ui.available_width()), 0.0), |ui| {
+        ui.add(egui::Label::new(egui::RichText::new(why).size(s.font).color(s.weak)).selectable(false).wrap());
+    });
+}
+
+/// Draws a [`PlacesNotice`] in the middle of the width, a little down from the top. True when its
+/// button was pressed.
+fn notice(ui: &mut Ui, s: &PlacesStyle, icon: IconPainter<'_>, what: &PlacesNotice<'_>) -> bool {
+    let mut pressed = false;
+    ui.add_space((ui.available_height() * 0.14).clamp(12.0, 72.0));
+    ui.vertical_centered(|ui| {
+        let (disc, _) = ui.allocate_exact_size(vec2(56.0, 56.0), Sense::hover());
+        ui.painter().circle_filled(disc.center(), 28.0, s.thumbnail);
+        icon(what.icon, ui.painter(), Rect::from_center_size(disc.center(), vec2(26.0, 26.0)), s.icon);
+        ui.add_space(12.0);
+        ui.allocate_ui_with_layout(vec2(READING_WIDTH.min(ui.available_width()), 0.0), egui::Layout::top_down(egui::Align::Center), |ui| {
+            let line = |text: &str, size: f32, colour: Color32| {
+                egui::Label::new(egui::RichText::new(text).size(size).color(colour)).selectable(false).wrap().halign(egui::Align::Center)
+            };
+            ui.add(line(what.title, s.font + 2.0, s.text));
+            if !what.body.is_empty() {
+                ui.add_space(4.0);
+                ui.add(line(what.body, s.font, s.weak));
+            }
+            if let Some(label) = what.action {
+                ui.add_space(14.0);
+                pressed = ui.add(egui::Button::new(egui::RichText::new(label).size(s.font)).min_size(vec2(96.0, s.row_height))).clicked();
+            }
+        });
+    });
+    pressed
 }
 
 fn list_row(ui: &mut Ui, s: &PlacesStyle, icon: IconPainter<'_>, entry: &PlaceEntry<'_>) -> Response {
@@ -613,6 +669,17 @@ pub fn paint_icon(icon: PlacesIcon, painter: &Painter, rect: Rect, colour: Color
         }
         PlacesIcon::Other | PlacesIcon::Browse | PlacesIcon::Folder => {
             painter.add(outline(&[(0.1, 0.24), (0.4, 0.24), (0.5, 0.36), (0.9, 0.36), (0.9, 0.8), (0.1, 0.8)]));
+        }
+        PlacesIcon::Locked => {
+            painter.rect_stroke(Rect::from_min_max(at(0.2, 0.46), at(0.8, 0.88)), CornerRadius::same(2), stroke, StrokeKind::Middle);
+            // The shackle: half a circle on two short posts.
+            let mut points = vec![at(0.33, 0.46)];
+            points.extend((0..=10).map(|step| {
+                let angle = (180.0 + 18.0 * step as f32).to_radians();
+                at(0.5 + 0.17 * angle.cos(), 0.31 + 0.17 * angle.sin())
+            }));
+            points.push(at(0.67, 0.46));
+            painter.add(Shape::line(points, stroke));
         }
         PlacesIcon::File => {
             painter.add(outline(&[(0.22, 0.1), (0.6, 0.1), (0.8, 0.3), (0.8, 0.9), (0.22, 0.9)]));
