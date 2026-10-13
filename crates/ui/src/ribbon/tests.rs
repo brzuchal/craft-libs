@@ -44,3 +44,18 @@ fn groups_follow_each_other_and_are_at_least_as_wide_as_their_caption() {
     // "Paragraph" plus the launcher is wider than the 40 px of content.
     assert!(groups[2].width() > 40.0 + GROUP_PAD * 2.0);
 }
+
+#[test]
+fn a_caption_bound_group_leaves_the_launcher_its_own_room() {
+    // Width comes from the caption here (the content is narrower): caption text plus the launcher
+    // plus the padding on both sides, so the centred text ends before the launcher starts.
+    let ctx = egui::Context::default();
+    let (_, groups) = frame(&ctx, RibbonFrame::Flush, true);
+    let style = RibbonStyle::from_visuals(&egui::Visuals::light());
+    let text = ctx.fonts_mut(|f| f.layout_no_wrap("Paragraph".to_string(), FontId::proportional(style.caption_font), style.caption).size().x);
+    let group = groups[2];
+    assert!((group.width() - (text + LAUNCHER_W + GROUP_PAD * 2.0)).abs() < 0.5, "{group:?}");
+    let text_right = group.left() + (group.width() - LAUNCHER_W) / 2.0 + text / 2.0;
+    let launcher_left = group.right() - 9.0 - 7.0;
+    assert!(text_right <= launcher_left, "caption ends at {text_right}, launcher starts at {launcher_left}");
+}

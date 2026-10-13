@@ -170,7 +170,9 @@ impl<'a> FontBox<'a> {
                     Some((family, _)) if self.family.is_empty() => family.to_string(),
                     _ => self.family.clone(),
                 };
-                let family_list: Vec<(String, String)> = self.families.iter().map(|f| (f.clone(), f.clone())).collect();
+                // The lists are only built while a popup is open, not every frame.
+                let families = self.families;
+                let family_list = || families.to_vec();
                 if let Some(v) =
                     field(ui, id.with("family"), &style, self.family_width, &shown, self.labels.font, &family_list, Some(&shown), self.preview)
                     && !v.trim().is_empty()
@@ -180,7 +182,8 @@ impl<'a> FontBox<'a> {
                     out.family_changed = true;
                 }
                 let shown = self.size.or(hint.map(|(_, size)| size)).map(format_size).unwrap_or_default();
-                let size_list: Vec<(String, String)> = self.sizes.iter().map(|s| (format_size(*s), format_size(*s))).collect();
+                let sizes = self.sizes;
+                let size_list = || sizes.iter().map(|s| format_size(*s)).collect();
                 if let Some(v) = field(ui, id.with("size"), &style, self.size_width, &shown, self.labels.size, &size_list, Some(&shown), None)
                     && let Some(s) = parse_size(&v)
                     && Some(s) != *self.size
@@ -243,7 +246,7 @@ fn field(
     width: f32,
     shown: &str,
     label: &str,
-    list: &[(String, String)],
+    list: &dyn Fn() -> Vec<String>,
     current: Option<&str>,
     preview: Option<Preview<'_>>,
 ) -> Option<String> {
@@ -312,14 +315,15 @@ fn field(
     if open {
         // While typing, the list narrows to what matches; opened from the chevron it shows all.
         let filter = if edit.has_focus() && buf != shown { buf.to_lowercase() } else { String::new() };
+        let list = list();
         let area =
             egui::Area::new(id.with("popup")).order(egui::Order::Foreground).fixed_pos(rect.left_bottom() + vec2(0.0, 2.0)).show(ui.ctx(), |ui| {
                 egui::Frame::popup(ui.style()).show(ui, |ui| {
                     ui.set_min_width(rect.width().max(120.0));
                     egui::ScrollArea::vertical().max_height(320.0).show(ui, |ui| {
-                        for (value, text) in list.iter().filter(|(_, t)| filter.is_empty() || t.to_lowercase().contains(&filter)) {
+                        for value in list.iter().filter(|t| filter.is_empty() || t.to_lowercase().contains(&filter)) {
                             let font = preview.and_then(|p| p(value)).unwrap_or(FontId::proportional(style.font));
-                            let rt = egui::RichText::new(text).font(font);
+                            let rt = egui::RichText::new(value).font(font);
                             if ui
                                 .add(egui::Button::selectable(current == Some(value.as_str()), rt).min_size(vec2(ui.available_width(), 0.0)))
                                 .clicked()
@@ -379,8 +383,8 @@ fn glyph_button(ui: &mut Ui, style: &FontBoxStyle, glyph: Glyph, label: &str) ->
             painter.rect_filled(r, CornerRadius::same(1), style.mark);
         }
     }
-    let label = label.to_string();
-    response.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, true, &label));
+    let (label, enabled) = (label.to_string(), ui.is_enabled());
+    response.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, enabled, &label));
     response.on_hover_text(label)
 }
 

@@ -58,7 +58,9 @@ impl<'a> StatusBar<'a> {
         ui.scope_builder(egui::UiBuilder::new().max_rect(inner).layout(Layout::right_to_left(Align::Center)), |ui| {
             ui.spacing_mut().item_spacing = vec2(GAP, 0.0);
             right(ui);
-            let rest = Rect::from_min_max(inner.min, pos2(ui.min_rect().left() - GAP * 2.0, inner.bottom()));
+            // Never inverted: in a window too narrow for the right-hand controls the left zone is
+            // simply empty.
+            let rest = Rect::from_min_max(inner.min, pos2((ui.min_rect().left() - GAP * 2.0).max(inner.min.x), inner.bottom()));
             ui.scope_builder(egui::UiBuilder::new().max_rect(rest).layout(Layout::left_to_right(Align::Center)), |ui| {
                 ui.set_clip_rect(rest);
                 ui.spacing_mut().item_spacing = vec2(GAP * 3.0, 0.0);
@@ -77,8 +79,8 @@ pub fn item(ui: &mut Ui, style: &StatusBarStyle, text: &str) -> Response {
         ui.painter().rect_filled(rect, CornerRadius::same(3), style.hover);
     }
     ui.painter().galley(pos2(rect.left() + 4.0, rect.center().y - galley.size().y / 2.0), galley, style.text);
-    let text = text.to_string();
-    response.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, true, &text));
+    let (text, enabled) = (text.to_string(), ui.is_enabled());
+    response.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, enabled, &text));
     response
 }
 
@@ -92,8 +94,8 @@ pub fn view_button(ui: &mut Ui, style: &StatusBarStyle, selected: bool, label: &
         ui.painter().rect_filled(rect, CornerRadius::same(3), style.hover);
     }
     paint(ui.painter(), Rect::from_center_size(rect.center(), vec2(14.0, 14.0)), style.icon);
-    let label = label.to_string();
-    response.widget_info(|| egui::WidgetInfo::selected(egui::WidgetType::RadioButton, true, selected, &label));
+    let (label, enabled) = (label.to_string(), ui.is_enabled());
+    response.widget_info(|| egui::WidgetInfo::selected(egui::WidgetType::RadioButton, enabled, selected, &label));
     response.on_hover_text(label)
 }
 
@@ -106,7 +108,33 @@ pub fn text_button(ui: &mut Ui, style: &StatusBarStyle, label: &str, paint: impl
     }
     paint(ui.painter(), Rect::from_center_size(pos2(rect.left() + 11.0, rect.center().y), vec2(13.0, 13.0)), style.icon);
     ui.painter().text(pos2(rect.left() + 21.0, rect.center().y), Align2::LEFT_CENTER, label, FontId::proportional(style.font), style.text);
-    let label = label.to_string();
-    response.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, true, &label));
+    let (label, enabled) = (label.to_string(), ui.is_enabled());
+    response.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, enabled, &label));
     response
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A window narrower than the right-hand controls leaves the left zone empty, not inverted.
+    #[test]
+    fn a_narrow_bar_keeps_a_valid_left_zone() {
+        let ctx = egui::Context::default();
+        let style = StatusBarStyle::from_visuals(&egui::Visuals::light());
+        let mut left_rect = None;
+        let input = egui::RawInput { screen_rect: Some(Rect::from_min_size(egui::Pos2::ZERO, vec2(60.0, 40.0))), ..Default::default() };
+        let mut full = ctx.run_ui(input, |ui| {
+            StatusBar::new(&style).show(
+                ui,
+                |ui| left_rect = Some(ui.max_rect()),
+                |ui| {
+                    ui.allocate_exact_size(vec2(200.0, 10.0), Sense::hover());
+                },
+            );
+        });
+        full.textures_delta.clear();
+        let r = left_rect.expect("the left zone is laid out");
+        assert!(r.width() >= 0.0 && r.height() >= 0.0, "{r:?}");
+    }
 }

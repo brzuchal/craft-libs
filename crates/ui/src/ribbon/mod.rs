@@ -68,6 +68,8 @@ const PAD_X: f32 = 6.0;
 const PAD_Y: f32 = 4.0;
 const CAPTION_H: f32 = 16.0;
 const GROUP_PAD: f32 = 6.0;
+/// Room the dialog launcher takes at the right of a caption.
+const LAUNCHER_W: f32 = 18.0;
 
 /// The ribbon body; see the module documentation.
 pub struct Ribbon<'a> {
@@ -193,7 +195,7 @@ impl<'a> RibbonGroup<'a> {
         let mut width = used.width().max(0.0) + GROUP_PAD * 2.0;
         let caption_w = if captions {
             ui.fonts_mut(|f| f.layout_no_wrap(self.caption.to_string(), FontId::proportional(s.caption_font), s.caption).size().x)
-                + if self.launcher.is_some() { 18.0 } else { 0.0 }
+                + if self.launcher.is_some() { LAUNCHER_W } else { 0.0 }
         } else {
             0.0
         };
@@ -203,7 +205,10 @@ impl<'a> RibbonGroup<'a> {
         let mut launcher_clicked = false;
         if captions {
             let cap = Rect::from_min_max(pos2(rect.left(), rect.bottom() - CAPTION_H), rect.max);
-            ui.painter().text(cap.center(), Align2::CENTER_CENTER, self.caption, FontId::proportional(s.caption_font), s.caption);
+            // The caption is centred in what the launcher leaves, so a group no wider than its
+            // caption does not draw one over the other.
+            let text_area = if self.launcher.is_some() { Rect::from_min_max(cap.min, pos2(cap.right() - LAUNCHER_W, cap.bottom())) } else { cap };
+            ui.painter().text(text_area.center(), Align2::CENTER_CENTER, self.caption, FontId::proportional(s.caption_font), s.caption);
             if let Some(tip) = self.launcher {
                 let lr = Rect::from_center_size(pos2(cap.right() - 9.0, cap.center().y), vec2(14.0, 14.0));
                 let resp = ui.interact(lr, ui.id().with(("launcher", self.caption)), Sense::click());
@@ -220,7 +225,8 @@ impl<'a> RibbonGroup<'a> {
                     Stroke::new(1.0, s.caption.gamma_multiply(0.5)),
                     StrokeKind::Inside,
                 );
-                resp.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, true, tip));
+                let enabled = ui.is_enabled();
+                resp.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, enabled, tip));
                 launcher_clicked = resp.on_hover_text(tip).clicked();
             }
         }
@@ -243,8 +249,8 @@ pub fn toggle(ui: &mut Ui, style: &RibbonStyle, selected: bool, label: &str, pai
         painter.rect_filled(rect, CornerRadius::same(4), style.hover);
     }
     paint(painter, rect.shrink(4.0), style.icon);
-    let label = label.to_string();
-    response.widget_info(|| egui::WidgetInfo::selected(egui::WidgetType::Checkbox, true, selected, &label));
+    let (label, enabled) = (label.to_string(), ui.is_enabled());
+    response.widget_info(|| egui::WidgetInfo::selected(egui::WidgetType::Checkbox, enabled, selected, &label));
     response.on_hover_text(label)
 }
 
@@ -258,8 +264,8 @@ pub fn large_button(ui: &mut Ui, style: &RibbonStyle, label: &str, paint: impl F
     let icon = Rect::from_center_size(pos2(rect.center().x, rect.top() + 20.0), vec2(28.0, 28.0));
     paint(ui.painter(), icon, style.icon);
     ui.painter().text(pos2(rect.center().x, rect.bottom() - 10.0), Align2::CENTER_CENTER, label, FontId::proportional(12.0), style.icon);
-    let label = label.to_string();
-    response.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, true, &label));
+    let (label, enabled) = (label.to_string(), ui.is_enabled());
+    response.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, enabled, &label));
     response
 }
 
@@ -272,8 +278,8 @@ pub fn small_button(ui: &mut Ui, style: &RibbonStyle, label: &str, paint: impl F
     }
     paint(ui.painter(), Rect::from_center_size(pos2(rect.left() + 13.0, rect.center().y), vec2(16.0, 16.0)), style.icon);
     ui.painter().text(pos2(rect.left() + 26.0, rect.center().y), Align2::LEFT_CENTER, label, FontId::proportional(12.0), style.icon);
-    let label = label.to_string();
-    response.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, true, &label));
+    let (label, enabled) = (label.to_string(), ui.is_enabled());
+    response.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, enabled, &label));
     response
 }
 
