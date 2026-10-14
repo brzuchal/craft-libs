@@ -268,6 +268,10 @@ fn column(ui: &mut egui::Ui, showing: &'static str, accent: egui::Color32, title
   End reach the ends, and Enter or Space chooses the entry in focus. The title band is not a stop.
 - **Keys.** `K` is whatever the app names its pages with (`&str`, an enum); it comes back in
   `FileNavAction::Choose`. The page that is showing is marked, and announced as chosen.
+- **Disabled entries.** `.disabled(&keys)` marks the entries that cannot be chosen now (Info,
+  Save, Print and Close with no document open). They keep their place and are drawn in
+  `FileNavStyle::disabled` with no hover, are announced as unavailable, never come back in
+  `FileNavAction::Choose`, and Tab and the arrow keys pass over them.
 - **Too little room.** A label longer than the column ends in an ellipsis and is whole in its
   tip. A column too short for its entries puts the foot after the pages and scrolls.
 - **Colour.** `FileNavStyle::on_accent` fills the column with the app's colour;

@@ -6,6 +6,8 @@
 //! decides what each choice does. The column draws them and reports a [`FileNavAction`].
 //!
 //! Tab reaches every entry, Up and Down walk them, and Enter or Space chooses the one in focus.
+//! An entry the application marks [disabled](FileNav::disabled) (Save with no document open) is
+//! dimmed, cannot be chosen and is passed over by the keys.
 //!
 //! On macOS the File page covers the title bar, so the column starts with a band the height of
 //! that bar ([`FileNav::title_band`]): it is left to the window buttons and drags the window.
@@ -22,6 +24,8 @@ use crate::places::finite;
 pub struct FileNavStyle {
     pub fill: Color32,
     pub text: Color32,
+    /// The label and icon of an entry that cannot be chosen now.
+    pub disabled: Color32,
     pub hover: Color32,
     /// Behind the page that is showing.
     pub selected: Color32,
@@ -45,6 +49,7 @@ impl FileNavStyle {
         Self {
             fill: accent,
             text: Color32::WHITE,
+            disabled: Color32::from_white_alpha(120),
             hover: Color32::from_white_alpha(26),
             selected: Color32::from_white_alpha(46),
             mark: Color32::WHITE,
@@ -64,6 +69,7 @@ impl FileNavStyle {
         Self {
             fill: v.panel_fill,
             text: v.text_color(),
+            disabled: v.weak_text_color(),
             hover: v.widgets.hovered.weak_bg_fill,
             selected: v.widgets.inactive.weak_bg_fill,
             mark: v.selection.bg_fill,
@@ -116,6 +122,7 @@ pub struct FileNav<'a, K> {
     groups: &'a [&'a [FileNavItem<'a, K>]],
     foot: &'a [FileNavItem<'a, K>],
     selected: Option<K>,
+    disabled: &'a [K],
     style: &'a FileNavStyle,
     icons: IconPainter<'a, K>,
     title_band: f32,
@@ -131,12 +138,19 @@ impl<'a, K: Copy + PartialEq> FileNav<'a, K> {
         style: &'a FileNavStyle,
         icons: IconPainter<'a, K>,
     ) -> Self {
-        Self { back, groups, foot: &[], selected, style, icons, title_band: 0.0 }
+        Self { back, groups, foot: &[], selected, disabled: &[], style, icons, title_band: 0.0 }
     }
 
     /// The entries at the bottom of the column, top to bottom: Options, About.
     pub fn foot(mut self, foot: &'a [FileNavItem<'a, K>]) -> Self {
         self.foot = foot;
+        self
+    }
+
+    /// The entries that cannot be chosen now, by key: dimmed, never reported as chosen, announced
+    /// as unavailable and passed over by Tab and the arrow keys.
+    pub fn disabled(mut self, disabled: &'a [K]) -> Self {
+        self.disabled = disabled;
         self
     }
 
@@ -149,7 +163,7 @@ impl<'a, K: Copy + PartialEq> FileNav<'a, K> {
 
     /// As wide as [`FileNavStyle::width`] and as high as the space it is given.
     pub fn show(self, ui: &mut Ui) -> FileNavResponse<K> {
-        let Self { back, groups, foot, selected, style: s, icons, title_band } = self;
+        let Self { back, groups, foot, selected, disabled, style: s, icons, title_band } = self;
         let (rect, response) = ui.allocate_exact_size(vec2(s.width, finite(ui.available_height(), 480.0)), Sense::hover());
         let mut action = None;
         if !ui.is_rect_visible(rect) {
@@ -177,30 +191,32 @@ impl<'a, K: Copy + PartialEq> FileNav<'a, K> {
             }
             // The rows from the top down, whatever order they are drawn in.
             let mut order: Vec<egui::Id> = Vec::with_capacity(1 + entries + foot.len());
+            // A disabled entry is no stop for the keys, so it gives no id to walk to.
             let mut entry = |ui: &mut Ui, item: &FileNavItem<'_, K>, height: f32, font: &FontId| {
                 let showing = selected == Some(item.key);
+                let enabled = !disabled.contains(&item.key);
                 let font = if showing && height == s.row_height { &s.selected_font } else { font };
-                let response = row(ui, s, icons, Some(item.key), item.label, Some(showing), height, font);
-                if response.clicked() {
+                let response = row(ui, s, icons, Some(item.key), item.label, Some(showing), enabled, height, font);
+                if enabled && response.clicked() {
                     action = Some(FileNavAction::Choose(item.key));
                 }
-                response.id
+                enabled.then_some(response.id)
             };
             let mut back_clicked = false;
             let mut pages_and = |ui: &mut Ui, order: &mut Vec<egui::Id>, foot_follows: bool| {
-                let response = row(ui, s, icons, None, back, None, s.row_height, &s.font);
+                let response = row(ui, s, icons, None, back, None, true, s.row_height, &s.font);
                 back_clicked |= response.clicked();
                 order.push(response.id);
                 for group in groups {
                     rule(ui, s);
                     for item in *group {
-                        order.push(entry(ui, item, s.row_height, &s.font));
+                        order.extend(entry(ui, item, s.row_height, &s.font));
                     }
                 }
                 if foot_follows {
                     rule(ui, s);
                     for item in foot {
-                        order.push(entry(ui, item, s.foot_row_height, &s.foot_font));
+                        order.extend(entry(ui, item, s.foot_row_height, &s.foot_font));
                     }
                     ui.add_space(s.padding);
                 }
@@ -214,7 +230,7 @@ impl<'a, K: Copy + PartialEq> FileNav<'a, K> {
                         from_the_bottom.push(entry(ui, item, s.foot_row_height, &s.foot_font));
                     }
                 });
-                order.extend(from_the_bottom.into_iter().rev());
+                order.extend(from_the_bottom.into_iter().rev().flatten());
             } else {
                 egui::ScrollArea::vertical().id_salt("craft-ui/file-nav").auto_shrink([false, false]).show(ui, |ui| pages_and(ui, &mut order, true));
             }
@@ -228,7 +244,8 @@ impl<'a, K: Copy + PartialEq> FileNav<'a, K> {
 }
 
 /// One entry: icon, label, and the mark when it is the page that is showing. `showing` is `None`
-/// for Back, which is an action and not a page.
+/// for Back, which is an action and not a page. A row that is not `enabled` only senses the
+/// pointer, for the tip of a cut label: no click, no focus, no hover fill.
 #[allow(clippy::too_many_arguments)]
 fn row<K: Copy>(
     ui: &mut Ui,
@@ -237,27 +254,29 @@ fn row<K: Copy>(
     key: Option<K>,
     label: &str,
     showing: Option<bool>,
+    enabled: bool,
     height: f32,
     font: &FontId,
 ) -> Response {
-    let (rect, response) = ui.allocate_exact_size(vec2(s.width, height), Sense::click());
+    let (rect, response) = ui.allocate_exact_size(vec2(s.width, height), if enabled { Sense::click() } else { Sense::hover() });
     if showing == Some(true) {
         ui.painter().rect_filled(rect, CornerRadius::ZERO, s.selected);
         ui.painter().rect_filled(Rect::from_min_size(rect.min, vec2(3.0, rect.height())), CornerRadius::ZERO, s.mark);
-    } else if response.hovered() || response.has_focus() {
+    } else if enabled && (response.hovered() || response.has_focus()) {
         ui.painter().rect_filled(rect, CornerRadius::ZERO, s.hover);
     }
-    icons(key, ui.painter(), Rect::from_center_size(pos2(rect.left() + ICON_X, rect.center().y), vec2(ICON, ICON)), s.text);
+    let colour = if enabled { s.text } else { s.disabled };
+    icons(key, ui.painter(), Rect::from_center_size(pos2(rect.left() + ICON_X, rect.center().y), vec2(ICON, ICON)), colour);
     // A label longer than the column (a translation, usually) ends in an ellipsis instead of
     // running off the edge, and is whole in its tip.
-    let mut job = LayoutJob::simple_singleline(label.to_owned(), font.clone(), s.text);
+    let mut job = LayoutJob::simple_singleline(label.to_owned(), font.clone(), colour);
     job.wrap = TextWrapping::truncate_at_width((s.width - TEXT_X - 10.0).max(0.0));
     let galley = ui.painter().layout_job(job);
     let cut = galley.elided;
-    ui.painter().galley(pos2(rect.left() + TEXT_X, rect.center().y - galley.size().y / 2.0), galley, s.text);
+    ui.painter().galley(pos2(rect.left() + TEXT_X, rect.center().y - galley.size().y / 2.0), galley, colour);
     response.widget_info(|| match showing {
-        Some(showing) => egui::WidgetInfo::selected(egui::WidgetType::Button, true, showing, label),
-        None => egui::WidgetInfo::labeled(egui::WidgetType::Button, true, label),
+        Some(showing) => egui::WidgetInfo::selected(egui::WidgetType::Button, enabled, showing, label),
+        None => egui::WidgetInfo::labeled(egui::WidgetType::Button, enabled, label),
     });
     if cut { response.on_hover_text(label) } else { response }
 }
