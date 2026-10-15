@@ -210,6 +210,18 @@ impl<'a> Slider<'a> {
                     response.mark_changed();
                 }
             }
+            // The release frame has no drag position of its own: report where the drag ended, so a
+            // caller that applies on release (and re-seeds `value` from its model every frame) gets
+            // the dragged-to value, not the one it started from.
+            if response.drag_stopped()
+                && let Some(f) = ui.data(|d| d.get_temp::<f64>(drag_id))
+            {
+                let v = self.value_at(f);
+                if v != *self.value {
+                    *self.value = v;
+                    response.mark_changed();
+                }
+            }
             if response.drag_stopped() || !response.dragged() {
                 ui.data_mut(|d| d.remove::<f64>(drag_id));
             }

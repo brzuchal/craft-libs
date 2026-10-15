@@ -217,3 +217,42 @@ fn typed_values_drop_the_suffix_even_when_it_holds_a_digit() {
     assert_eq!(parse_typed("24 fp", "fps"), Some(24.0), "a half-typed suffix");
     assert_eq!(parse_typed("fast", "%"), None);
 }
+
+#[test]
+fn a_drag_reports_where_it_ended_to_a_caller_that_applies_on_release() {
+    // The caller keeps its own value and re-seeds the slider with it every frame, applying only
+    // when the drag ends: the release frame must hand back the dragged-to value.
+    let ctx = Context::default();
+    let style = SliderStyle::from_visuals(&egui::Visuals::light());
+    let mut model = 100.0;
+    let mut applied = Vec::new();
+    let mut frame = |events: Vec<Event>, model: &mut f64, applied: &mut Vec<f64>| -> Rect {
+        let mut rect = Rect::NOTHING;
+        let mut out =
+            ctx.run_ui(RawInput { screen_rect: Some(Rect::from_min_size(Pos2::ZERO, vec2(400.0, 100.0))), events, ..Default::default() }, |ui| {
+                let mut v = *model;
+                let r = Slider::new(&mut v, 10.0..=400.0, "Size", &style).width(200.0).show(ui);
+                if r.drag_stopped() || (r.changed() && !r.dragged()) {
+                    applied.push(v);
+                    *model = v;
+                }
+                rect = r.rect;
+            });
+        out.textures_delta.clear();
+        rect
+    };
+    let rect = frame(vec![], &mut model, &mut applied);
+    let (x0, x1, y) = (rect.left() + THUMB_RADIUS, rect.right() - THUMB_RADIUS, rect.center().y);
+    let from = pos2(x0 + 2.0, y);
+    let to = pos2(x1, y);
+    frame(vec![Event::PointerMoved(from), pointer(from, true)], &mut model, &mut applied);
+    for k in 1..=6 {
+        let p = from.lerp(to, k as f32 / 6.0);
+        frame(vec![Event::PointerMoved(p)], &mut model, &mut applied);
+    }
+    assert!(applied.is_empty(), "nothing applies while the slider is held: {applied:?}");
+    frame(vec![pointer(to, false)], &mut model, &mut applied);
+    frame(vec![], &mut model, &mut applied);
+    assert_eq!(applied.len(), 1, "{applied:?}");
+    assert!((model - 400.0).abs() < 1e-6, "the release applies the end of the range, got {model}");
+}
