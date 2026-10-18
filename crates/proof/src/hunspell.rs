@@ -56,14 +56,11 @@ impl Search {
         let lo_dirs = |base: &Path| -> Vec<PathBuf> { lo_exts.map_or_else(Vec::new, |exts| exts.iter().map(|e| base.join(e)).collect()) };
         let home = std::env::var_os("HOME").filter(|v| !v.is_empty()).map(PathBuf::from);
         if cfg!(windows) {
-            for var in ["LOCALAPPDATA", "APPDATA"] {
-                if let Some(base) = std::env::var_os(var).filter(|v| !v.is_empty()).map(PathBuf::from) {
-                    if let Some(app) = &self.app_dir {
-                        dirs.push(base.join(app).join("dictionaries"));
-                    }
-                    dirs.push(base.join("hunspell"));
-                }
-            }
+            let bases: Vec<PathBuf> = ["LOCALAPPDATA", "APPDATA"]
+                .into_iter()
+                .filter_map(|var| std::env::var_os(var).filter(|v| !v.is_empty()).map(PathBuf::from))
+                .collect();
+            dirs.extend(windows_user_dirs(&bases, self.app_dir.as_deref()));
             for var in ["ProgramFiles", "ProgramFiles(x86)"] {
                 if let Some(base) = std::env::var_os(var).filter(|v| !v.is_empty()).map(PathBuf::from) {
                     dirs.extend(lo_dirs(&base.join("LibreOffice").join("share").join("extensions")));
@@ -193,6 +190,14 @@ pub fn decode(aff: &[u8], dic: &[u8]) -> Result<(String, String), String> {
     }
 }
 
+/// The per-user Windows folders under `bases` (`%LOCALAPPDATA%`, then `%APPDATA%`): every app
+/// folder first, then the shared `hunspell` ones, so a dictionary the user put in either app
+/// folder wins over a shared one.
+fn windows_user_dirs(bases: &[PathBuf], app_dir: Option<&str>) -> Vec<PathBuf> {
+    let apps = app_dir.into_iter().flat_map(|app| bases.iter().map(move |b| b.join(app).join("dictionaries")));
+    apps.chain(bases.iter().map(|b| b.join("hunspell"))).collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -271,6 +276,19 @@ mod tests {
         }
         let (Some(app), Some(shared)) = (at(app), at(shared)) else { panic!("{dirs:?}") };
         assert!(app < shared, "{dirs:?}");
+    }
+
+    #[test]
+    fn on_windows_both_app_folders_come_before_both_shared_folders() {
+        let bases = [PathBuf::from("L"), PathBuf::from("R")];
+        let dirs = super::windows_user_dirs(&bases, Some("WordCraft"));
+        let expected: Vec<PathBuf> =
+            ["L/WordCraft/dictionaries", "R/WordCraft/dictionaries", "L/hunspell", "R/hunspell"].iter().map(PathBuf::from).collect();
+        assert_eq!(dirs, expected);
+        let last_app = dirs.iter().rposition(|d| d.ends_with("dictionaries"));
+        let first_shared = dirs.iter().position(|d| d.ends_with("hunspell"));
+        assert!(last_app < first_shared, "{dirs:?}");
+        assert_eq!(super::windows_user_dirs(&bases, None), vec![PathBuf::from("L/hunspell"), PathBuf::from("R/hunspell")]);
     }
 
     #[test]
