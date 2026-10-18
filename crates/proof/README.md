@@ -27,6 +27,9 @@ if let Some((aff, dic)) = search.find(&["pl_PL", "pl"]) {
   an error rather than misread.
 - **Compact form**: `AffixDict::to_bytes`/`from_bytes` store a loaded dictionary deflated
   (Polish is under 1 MB), so an app can cache it instead of parsing the `.aff`/`.dic` each start.
+  The data starts `WCAFF1`, or `WCAFF2` when the dictionary uses `KEY` or `NOSUGGEST`; a reader
+  that predates those rejects `WCAFF2` data as a bad header rather than misreading it, so a cache
+  should be rebuilt when that happens.
 
 What stays in each app: which languages it proofs, suggestion ranking and grammar rules per
 language, the user dictionary, and how marks are shown.

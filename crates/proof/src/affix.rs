@@ -25,7 +25,10 @@ use std::hash::Hasher;
 
 use crate::fx::{FxHasher, FxMap};
 
+/// The compact format's first line. `WCAFF2` adds the `KEY` and `NOSUGGEST` lines; a dictionary
+/// without them is still written as `WCAFF1`, so readers that predate them keep reading it.
 const MAGIC: &str = "WCAFF1";
+const MAGIC_V2: &str = "WCAFF2";
 /// Longest word (in bytes) looked up; longer input is never a dictionary word.
 pub const MAX_WORD_BYTES: usize = 120;
 /// Empty slot in the stem hash table.
@@ -781,13 +784,14 @@ impl AffixDict {
         &self.comments
     }
 
-    /// Serialize to the compact format: raw-deflate of `WCAFF1`, the comments, the
+    /// Serialize to the compact format: raw-deflate of `WCAFF1` (`WCAFF2` when the dictionary has
+    /// `KEY` or `NOSUGGEST`), the comments, the
     /// tables and rules as text lines, a `WORDS` line, then one line per stem, front-coded
     /// against the previous one (a byte with the shared prefix length in bytes, the rest of the
     /// word, `/` and its flags if any).
     pub fn to_bytes(&self) -> Vec<u8> {
         let mut out = String::new();
-        out.push_str(MAGIC);
+        out.push_str(if self.key.is_empty() && self.no_suggest == 0 { MAGIC } else { MAGIC_V2 });
         out.push('\n');
         for c in &self.comments {
             out.push_str("# ");
@@ -854,7 +858,7 @@ impl AffixDict {
         let words_at = raw.windows(7).position(|w| w == b"\nWORDS\n").ok_or("affix dictionary: no WORDS section")?;
         let head = std::str::from_utf8(raw.get(..words_at).unwrap_or_default()).map_err(|_| "affix dictionary: bad utf-8 in the rules")?;
         let mut lines = head.lines();
-        if lines.next() != Some(MAGIC) {
+        if !matches!(lines.next(), Some(MAGIC | MAGIC_V2)) {
             return Err("affix dictionary: bad header".into());
         }
         let mut rules = Rules::default();
@@ -986,6 +990,12 @@ pub(crate) mod tests {
         assert!(!d.check("banned"));
         let back = AffixDict::from_bytes(&d.to_bytes()).unwrap();
         assert!(back.check("toka") && !back.can_suggest("toka"), "NOSUGGEST survives to_bytes");
+        // The new directives mark the data WCAFF2; without them it stays WCAFF1 for older readers.
+        let header = |d: &AffixDict| miniz_oxide::inflate::decompress_to_vec(&d.to_bytes()).unwrap().split(|&b| b == b'\n').next().unwrap().to_vec();
+        assert_eq!(header(&d), b"WCAFF2");
+        let plain = AffixDict::from_hunspell("SET UTF-8\nTRY ab\nSFX A Y 1\nSFX A 0 s .\n", "1\nword/A\n", &[]).unwrap();
+        assert_eq!(header(&plain), b"WCAFF1");
+        assert!(AffixDict::from_bytes(&plain.to_bytes()).unwrap().check("words"));
         assert_eq!(back.key(), "ak");
     }
 
