@@ -176,7 +176,14 @@ fn decode_high(bytes: &[u8], high: &str) -> String {
 /// one the original Portuguese VERO uses, KOI8-R and Windows-1251 the ones older Russian dictionaries use).
 pub fn decode(aff: &[u8], dic: &[u8]) -> Result<(String, String), String> {
     let head = String::from_utf8_lossy(aff.get(..aff.len().min(8192)).unwrap_or_default()).to_string();
-    let set = head.lines().find_map(|l| l.trim_start_matches('\u{feff}').strip_prefix("SET ")).map(str::trim).unwrap_or("UTF-8").to_ascii_uppercase();
+    // Only the first token names the charset; a trailing comment or field is ignored, as the
+    // affix parser does for every directive.
+    let set = head
+        .lines()
+        .find_map(|l| l.trim_start_matches('\u{feff}').strip_prefix("SET "))
+        .and_then(|v| v.split_whitespace().next())
+        .unwrap_or("UTF-8")
+        .to_ascii_uppercase();
     match set.as_str() {
         "UTF-8" | "UTF8" => {
             let text = |b: &[u8], what: &str| String::from_utf8(b.to_vec()).map_err(|e| format!("{what}: not UTF-8: {e}"));
@@ -212,6 +219,16 @@ mod tests {
         assert_eq!(d, "żółw");
         assert!(decode(b"SET SHIFT_JIS\n", b"").is_err());
         assert!(decode(b"SET UTF-8\n", b"\xff\xfe").is_err());
+    }
+
+    #[test]
+    fn set_reads_only_the_charset_token() {
+        // `ł` in ISO 8859-2 is 0xB3; a comment after the charset must not make it unsupported.
+        let (_, d) = decode(b"SET ISO8859-2 # Polish\n", b"1\n\xb3\n").unwrap();
+        assert_eq!(d, "1\nł\n");
+        assert!(decode(b"SET UTF-8\tx\n", b"").is_ok());
+        assert!(decode(b"SET \n", b"").is_ok(), "an empty SET is UTF-8");
+        assert!(decode(b"SET SHIFT_JIS # no\n", b"").is_err(), "an unknown charset is still rejected");
     }
 
     #[test]
