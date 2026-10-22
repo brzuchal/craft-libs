@@ -180,8 +180,10 @@ pub fn decode(aff: &[u8], dic: &[u8]) -> Result<(String, String), String> {
     // affix parser does for every directive.
     let set = head
         .lines()
-        .find_map(|l| l.trim_start_matches('\u{feff}').strip_prefix("SET "))
-        .and_then(|v| v.split_whitespace().next())
+        .find_map(|l| {
+            let mut f = l.trim_start_matches('\u{feff}').split_whitespace();
+            (f.next() == Some("SET")).then(|| f.next()).flatten()
+        })
         .unwrap_or("UTF-8")
         .to_ascii_uppercase();
     match set.as_str() {
@@ -227,6 +229,10 @@ mod tests {
         let (_, d) = decode(b"SET ISO8859-2 # Polish\n", b"1\n\xb3\n").unwrap();
         assert_eq!(d, "1\nł\n");
         assert!(decode(b"SET UTF-8\tx\n", b"").is_ok());
+        // Any whitespace separates SET from the charset, a tab included.
+        let (_, d) = decode(b"SET\tISO8859-2\n", b"1\n\xb3\n").unwrap();
+        assert_eq!(d, "1\nł\n");
+        assert!(decode(b"SETTINGS ISO8859-2\n", b"\xb3").is_err(), "SET must be the whole directive");
         assert!(decode(b"SET \n", b"").is_ok(), "an empty SET is UTF-8");
         assert!(decode(b"SET SHIFT_JIS # no\n", b"").is_err(), "an unknown charset is still rejected");
     }
