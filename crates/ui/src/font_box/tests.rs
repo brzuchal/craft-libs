@@ -72,6 +72,30 @@ fn a_mixed_selection_shows_blank_fields_and_changes_nothing_by_itself() {
     assert_eq!((family.as_str(), size), ("", None));
 }
 
+/// Typing narrows the list; a click on a row picks it, even though the press takes focus from the
+/// field before the row sees the click.
+#[test]
+fn a_row_in_the_narrowed_list_is_picked_by_a_click() {
+    let ctx = egui::Context::default();
+    ctx.enable_accesskit();
+    let (mut family, mut size) = (String::new(), Some(11.0));
+    let (_, full) = run(&ctx, &mut family, &mut size, vec![]);
+    // "Font" names the chevron; the text field is to its left.
+    let chevron = centre(&full, "Font");
+    let field = egui::pos2(chevron.x - 30.0, chevron.y);
+    run(&ctx, &mut family, &mut size, vec![egui::Event::PointerMoved(field), click(field, true)]);
+    run(&ctx, &mut family, &mut size, vec![click(field, false)]);
+    run(&ctx, &mut family, &mut size, vec![egui::Event::Text("Geo".into())]);
+    let (_, full) = run(&ctx, &mut family, &mut size, vec![]);
+    let update = full.platform_output.accesskit_update.as_ref().expect("accesskit is on");
+    assert!(!update.nodes.iter().any(|(_, n)| n.label() == Some("Menlo")), "the list is narrowed to what matches");
+    let row = centre(&full, "Georgia");
+    run(&ctx, &mut family, &mut size, vec![egui::Event::PointerMoved(row), click(row, true)]);
+    let (r, _) = run(&ctx, &mut family, &mut size, vec![click(row, false)]);
+    assert!(r.family_changed, "the row's click is the pick");
+    assert_eq!(family, "Georgia");
+}
+
 fn click(pos: egui::Pos2, pressed: bool) -> egui::Event {
     egui::Event::PointerButton { pos, button: egui::PointerButton::Primary, pressed, modifiers: egui::Modifiers::NONE }
 }

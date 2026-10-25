@@ -253,6 +253,10 @@ fn field(
     let (rect, _) = ui.allocate_exact_size(vec2(width, style.height), Sense::hover());
     let open_id = id.with("open");
     let buf_id = id.with("buf");
+    // What the list is narrowed to. It is kept apart from the field's focus, so a press on a row
+    // (which takes focus from the field first) leaves the rows where they were until the release.
+    let filter_id = id.with("filter");
+    let popup_id = id.with("popup");
     let mut open = ui.is_enabled() && ui.data(|d| d.get_temp::<bool>(open_id)).unwrap_or(false);
     let editing = ui.memory(|m| m.has_focus(id.with("edit")));
     let mut buf = if editing { ui.data(|d| d.get_temp::<String>(buf_id)).unwrap_or_else(|| shown.to_string()) } else { shown.to_string() };
@@ -297,9 +301,15 @@ fn field(
         ui.data_mut(|d| d.insert_temp(buf_id, buf.clone()));
         if edit.changed() {
             open = true;
+            ui.data_mut(|d| d.insert_temp(filter_id, buf.clone()));
         }
     }
-    if edit.lost_focus() {
+    // A click inside last frame's list takes focus from the field (egui does it on the release)
+    // before the row sees the click: that is a pick in progress, not leaving the field.
+    let popup_rect = if open { ui.ctx().memory(|m| m.area_rect(popup_id)) } else { None };
+    let (pointer_event, at) = ui.input(|i| (i.pointer.any_pressed() || i.pointer.any_released(), i.pointer.interact_pos()));
+    let press_in_popup = pointer_event && at.zip(popup_rect).is_some_and(|(p, r)| r.contains(p));
+    if edit.lost_focus() && !press_in_popup {
         if ui.input(|i| i.key_pressed(Key::Escape)) {
             open = false;
         } else if buf != shown {
@@ -310,30 +320,27 @@ fn field(
     }
     if chev.clicked() {
         open = !open;
+        ui.data_mut(|d| d.remove::<String>(filter_id));
     }
 
     if open {
         // While typing, the list narrows to what matches; opened from the chevron it shows all.
-        let filter = if edit.has_focus() && buf != shown { buf.to_lowercase() } else { String::new() };
+        let filter = ui.data(|d| d.get_temp::<String>(filter_id)).filter(|f| f != shown).unwrap_or_default().to_lowercase();
         let list = list();
-        let area =
-            egui::Area::new(id.with("popup")).order(egui::Order::Foreground).fixed_pos(rect.left_bottom() + vec2(0.0, 2.0)).show(ui.ctx(), |ui| {
-                egui::Frame::popup(ui.style()).show(ui, |ui| {
-                    ui.set_min_width(rect.width().max(120.0));
-                    egui::ScrollArea::vertical().max_height(320.0).show(ui, |ui| {
-                        for value in list.iter().filter(|t| filter.is_empty() || t.to_lowercase().contains(&filter)) {
-                            let font = preview.and_then(|p| p(value)).unwrap_or(FontId::proportional(style.font));
-                            let rt = egui::RichText::new(value).font(font);
-                            if ui
-                                .add(egui::Button::selectable(current == Some(value.as_str()), rt).min_size(vec2(ui.available_width(), 0.0)))
-                                .clicked()
-                            {
-                                committed = Some(value.clone());
-                            }
+        let area = egui::Area::new(popup_id).order(egui::Order::Foreground).fixed_pos(rect.left_bottom() + vec2(0.0, 2.0)).show(ui.ctx(), |ui| {
+            egui::Frame::popup(ui.style()).show(ui, |ui| {
+                ui.set_min_width(rect.width().max(120.0));
+                egui::ScrollArea::vertical().max_height(320.0).show(ui, |ui| {
+                    for value in list.iter().filter(|t| filter.is_empty() || t.to_lowercase().contains(&filter)) {
+                        let font = preview.and_then(|p| p(value)).unwrap_or(FontId::proportional(style.font));
+                        let rt = egui::RichText::new(value).font(font);
+                        if ui.add(egui::Button::selectable(current == Some(value.as_str()), rt).min_size(vec2(ui.available_width(), 0.0))).clicked() {
+                            committed = Some(value.clone());
                         }
-                    });
+                    }
                 });
             });
+        });
         let clicked_outside = ui.input(|i| i.pointer.any_pressed())
             && ui.input(|i| i.pointer.interact_pos()).is_some_and(|p| !area.response.rect.contains(p) && !rect.contains(p));
         if committed.is_some() || clicked_outside || ui.input(|i| i.key_pressed(Key::Escape)) {
@@ -342,6 +349,9 @@ fn field(
                 ui.memory_mut(|m| m.surrender_focus(id.with("edit")));
             }
         }
+    }
+    if !open {
+        ui.data_mut(|d| d.remove::<String>(filter_id));
     }
     ui.data_mut(|d| d.insert_temp(open_id, open));
     committed
