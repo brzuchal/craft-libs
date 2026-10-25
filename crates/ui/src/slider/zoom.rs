@@ -139,7 +139,7 @@ impl<'a> ZoomBar<'a> {
             let enabled = ui.is_enabled();
             resp.widget_info(|| egui::WidgetInfo {
                 current_text_value: Some(shown.clone()),
-                ..egui::WidgetInfo::labeled(egui::WidgetType::Button, enabled, percent_name)
+                ..egui::WidgetInfo::labeled(egui::Role::Button, enabled, percent_name)
             });
             percent_clicked = resp.on_hover_text(percent_name).clicked();
         });
@@ -161,6 +161,6 @@ fn glyph_button(ui: &mut Ui, plus: bool, label: &str, style: &ZoomBarStyle) -> b
         ui.painter().line_segment([pos2(c.x, c.y - half), pos2(c.x, c.y + half)], stroke);
     }
     let enabled = ui.is_enabled();
-    resp.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, enabled, label));
+    resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, enabled, label));
     resp.on_hover_text(label).clicked()
 }
