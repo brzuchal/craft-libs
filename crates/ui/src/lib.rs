@@ -8,8 +8,10 @@
 pub mod buttons;
 pub mod docking;
 pub mod file_nav;
+mod focus;
 pub mod icons;
 pub mod layout;
+pub mod panes;
 pub mod places;
 pub mod printing;
 pub mod tabs;
