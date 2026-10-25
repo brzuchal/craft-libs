@@ -129,7 +129,9 @@ impl<'a> ZoomBar<'a> {
             }
             ui.add_space(2.0 * GAP);
             let (rect, resp) = ui.allocate_exact_size(vec2(label_w, size.y), Sense::click());
-            ui.painter().text(rect.right_center(), Align2::RIGHT_CENTER, format!("{:.0}%", *percent), FontId::proportional(style.font), style.text);
+            // Faded like the glyphs when the bar is disabled.
+            let text = if ui.is_enabled() { style.text } else { style.text.gamma_multiply(0.45) };
+            ui.painter().text(rect.right_center(), Align2::RIGHT_CENTER, format!("{:.0}%", *percent), FontId::proportional(style.font), text);
             let shown = format!("{:.0}%", *percent);
             let enabled = ui.is_enabled();
             resp.widget_info(|| egui::WidgetInfo {

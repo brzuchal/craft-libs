@@ -260,7 +260,14 @@ impl<'a> Slider<'a> {
             let steps = up - down;
             if steps != 0 || jump.is_some() {
                 let v = match (jump, self.step) {
-                    (Some(end), _) => self.snap(end),
+                    // The ends exactly, even off the step grid (`0..=10.3` with a step of 1).
+                    (Some(end), _) => {
+                        if self.range.end() >= self.range.start() {
+                            end
+                        } else {
+                            *self.range.start()
+                        }
+                    }
                     (None, Some(s)) => self.snap(*self.value + f64::from(steps) * s),
                     (None, None) => self.value_at(self.fraction(*self.value) + f64::from(steps) * 0.01),
                 };

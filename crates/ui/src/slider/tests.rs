@@ -118,6 +118,31 @@ fn keyboard_moves_by_step_page_and_to_the_ends() {
     assert_eq!(t.value, 10.0);
 }
 
+/// Home and End reach the range's ends even when they are off the step grid.
+#[test]
+fn home_and_end_reach_off_grid_ends() {
+    let ctx = Context::default();
+    let style = SliderStyle::from_visuals(&egui::Visuals::light());
+    let mut v = 5.0;
+    let run = |events: Vec<Event>, v: &mut f64| -> egui::Id {
+        let mut id = None;
+        let mut out = ctx.run_ui(RawInput { events, ..Default::default() }, |ui| {
+            id = Some(Slider::new(v, 0.3..=10.3, "Level", &style).step(1.0).show(ui).id);
+        });
+        out.textures_delta.clear();
+        id.expect("laid out")
+    };
+    let id = run(vec![], &mut v);
+    ctx.memory_mut(|m| m.request_focus(id));
+    run(vec![], &mut v);
+    run(vec![key(Key::End)], &mut v);
+    assert_eq!(v, 10.3);
+    run(vec![key(Key::Home)], &mut v);
+    assert_eq!(v, 0.3);
+    run(vec![key(Key::ArrowRight)], &mut v);
+    assert_eq!(v, 1.0, "arrows still snap to the step");
+}
+
 #[test]
 fn the_field_keeps_its_width_and_the_track_does_not_move() {
     let mut t = SliderTest::new(99.0);
@@ -266,7 +291,7 @@ fn a_drag_reports_where_it_ended_to_a_caller_that_applies_on_release() {
     let style = SliderStyle::from_visuals(&egui::Visuals::light());
     let mut model = 100.0;
     let mut applied = Vec::new();
-    let mut frame = |events: Vec<Event>, model: &mut f64, applied: &mut Vec<f64>| -> Rect {
+    let frame = |events: Vec<Event>, model: &mut f64, applied: &mut Vec<f64>| -> Rect {
         let mut rect = Rect::NOTHING;
         let mut out =
             ctx.run_ui(RawInput { screen_rect: Some(Rect::from_min_size(Pos2::ZERO, vec2(400.0, 100.0))), events, ..Default::default() }, |ui| {
