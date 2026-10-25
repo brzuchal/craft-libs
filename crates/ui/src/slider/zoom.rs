@@ -47,6 +47,9 @@ pub struct ZoomBar<'a> {
 }
 
 const BUTTON: f32 = 18.0;
+/// How close to a stop counts as on it, so `+` from 99.7% goes to 100%, not past it, while
+/// rounding noise at a stop (100.000001) still moves on to the next one.
+const EPS: f64 = 1e-6;
 const GAP: f32 = 4.0;
 /// Space between `−`/`+` and the slider: none, since the slider already keeps its thumb inset
 /// from its ends, so the glyphs sit right at the track.
@@ -82,9 +85,9 @@ impl<'a> ZoomBar<'a> {
         let next = if self.stops.is_empty() {
             if up { (v / 10.0).floor() * 10.0 + 10.0 } else { (v / 10.0).ceil() * 10.0 - 10.0 }
         } else if up {
-            self.stops.iter().copied().find(|s| *s > v + 0.5).unwrap_or(hi)
+            self.stops.iter().copied().find(|s| *s > v + EPS).unwrap_or(hi)
         } else {
-            self.stops.iter().rev().copied().find(|s| *s < v - 0.5).unwrap_or(lo)
+            self.stops.iter().rev().copied().find(|s| *s < v - EPS).unwrap_or(lo)
         };
         next.clamp(lo, hi)
     }
@@ -129,12 +132,14 @@ impl<'a> ZoomBar<'a> {
             }
             ui.add_space(2.0 * GAP);
             let (rect, resp) = ui.allocate_exact_size(vec2(label_w, size.y), Sense::click());
-            ui.painter().text(rect.right_center(), Align2::RIGHT_CENTER, format!("{:.0}%", *percent), FontId::proportional(style.font), style.text);
+            // Faded like the glyphs when the bar is disabled.
+            let text = if ui.is_enabled() { style.text } else { style.text.gamma_multiply(0.45) };
+            ui.painter().text(rect.right_center(), Align2::RIGHT_CENTER, format!("{:.0}%", *percent), FontId::proportional(style.font), text);
             let shown = format!("{:.0}%", *percent);
             let enabled = ui.is_enabled();
             resp.widget_info(|| egui::WidgetInfo {
                 current_text_value: Some(shown.clone()),
-                ..egui::WidgetInfo::labeled(egui::WidgetType::Button, enabled, percent_name)
+                ..egui::WidgetInfo::labeled(egui::Role::Button, enabled, percent_name)
             });
             percent_clicked = resp.on_hover_text(percent_name).clicked();
         });
@@ -156,6 +161,6 @@ fn glyph_button(ui: &mut Ui, plus: bool, label: &str, style: &ZoomBarStyle) -> b
         ui.painter().line_segment([pos2(c.x, c.y - half), pos2(c.x, c.y + half)], stroke);
     }
     let enabled = ui.is_enabled();
-    resp.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, enabled, label));
+    resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, enabled, label));
     resp.on_hover_text(label).clicked()
 }

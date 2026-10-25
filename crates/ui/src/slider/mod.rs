@@ -25,11 +25,18 @@ pub use zoom::{ZoomBar, ZoomBarLabels, ZoomBarResponse, ZoomBarStyle};
 
 /// A number typed into the value field, with or without its suffix. The suffix itself is taken
 /// off first, so one with a digit in it (`24fps`) is not cut short; then whatever is left of a
-/// half-typed one. A decimal comma counts as a point.
+/// half-typed one. A decimal comma counts as a point. Any other text after the number makes the
+/// input invalid (`12xyz` is not 12), so the field keeps its value.
 fn parse_typed(text: &str, suffix: &str) -> Option<f64> {
     let t = text.trim();
     let t = if suffix.is_empty() { t } else { t.strip_suffix(suffix).unwrap_or(t) };
-    t.trim_end_matches(|c: char| !c.is_ascii_digit()).trim().replace(',', ".").parse().ok()
+    let number = t.trim_end_matches(|c: char| !c.is_ascii_digit());
+    let rest = t.get(number.len()..).unwrap_or("").trim();
+    let half_typed = !suffix.is_empty() && suffix.starts_with(rest);
+    if !(rest.is_empty() || rest == "." || rest == "," || half_typed) {
+        return None;
+    }
+    number.trim().replace(',', ".").parse().ok()
 }
 
 #[cfg(test)]
@@ -229,6 +236,8 @@ impl<'a> Slider<'a> {
                     *self.value = v;
                     response.mark_changed();
                 }
+                // The thumb shows the released value this frame too, not the re-seeded one.
+                thumb_fraction = self.fraction(v);
             }
             if response.drag_stopped() || !response.dragged() {
                 ui.data_mut(|d| d.remove::<f64>(drag_id));
@@ -260,7 +269,14 @@ impl<'a> Slider<'a> {
             let steps = up - down;
             if steps != 0 || jump.is_some() {
                 let v = match (jump, self.step) {
-                    (Some(end), _) => self.snap(end),
+                    // The ends exactly, even off the step grid (`0..=10.3` with a step of 1).
+                    (Some(end), _) => {
+                        if self.range.end() >= self.range.start() {
+                            end
+                        } else {
+                            *self.range.start()
+                        }
+                    }
                     (None, Some(s)) => self.snap(*self.value + f64::from(steps) * s),
                     (None, None) => self.value_at(self.fraction(*self.value) + f64::from(steps) * 0.01),
                 };
@@ -332,12 +348,21 @@ impl<'a> Slider<'a> {
                     .custom_formatter(move |v, _| format!("{v:.decimals$}{suffix_owned}"))
                     .custom_parser(move |t| parse_typed(t, &typed_suffix)),
             );
+            // A typed value that snaps back to the current one (100.4 with a step of 1) is no
+            // change: the field stays in the response (its rect and interaction) but its own
+            // changed flag is not passed on.
+            let mut field = field;
+            let mut applied = false;
             if field.changed() {
                 let v = self.snap(v);
                 if v != *self.value {
                     *self.value = v;
                     response.mark_changed();
+                    applied = true;
                 }
+            }
+            if field.changed() && !applied {
+                field.flags.remove(egui::response::Flags::CHANGED);
             }
             response = response.union(field);
         }
