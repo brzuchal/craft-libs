@@ -65,10 +65,34 @@ pub enum LocalOutcome {
 #[derive(Clone, Debug)]
 pub struct LocalFolder {
     dir: PathBuf,
+    /// The way back up, worked out when the folder was opened: see [`trail`].
+    trail: Vec<(String, PathBuf)>,
     extensions: Vec<String>,
     items: Vec<LocalItem>,
     truncated: bool,
     failed: Option<ErrorKind>,
+}
+
+/// Each named folder on the way to `dir`, with where it is. The path is the folder's real one
+/// (`..` and links resolved), so every step is an ancestor and leads where it says: `/tmp/a/../b`
+/// shows `tmp` and `b`, not `a`. A folder that can't be resolved (gone, say) keeps its path as
+/// written unless it steps back with `..`; then there is no trustworthy way up to show.
+fn trail(dir: &Path) -> Vec<(String, PathBuf)> {
+    use std::path::Component;
+    let path = match std::fs::canonicalize(dir) {
+        Ok(real) => real,
+        Err(_) if !dir.components().any(|part| matches!(part, Component::ParentDir | Component::CurDir)) => dir.to_path_buf(),
+        Err(_) => return Vec::new(),
+    };
+    let mut at = PathBuf::new();
+    let mut steps = Vec::new();
+    for part in path.components() {
+        at.push(part);
+        if let Component::Normal(name) = part {
+            steps.push((name.to_string_lossy().into_owned(), at.clone()));
+        }
+    }
+    steps
 }
 
 impl LocalFolder {
@@ -76,8 +100,10 @@ impl LocalFolder {
     /// case; `*` lists every file. Subfolders are always listed. Hidden entries (a leading dot)
     /// are left out.
     pub fn open(dir: impl Into<PathBuf>, extensions: &[&str]) -> Self {
+        let dir = dir.into();
         let mut folder = Self {
-            dir: dir.into(),
+            trail: trail(&dir),
+            dir,
             extensions: extensions.iter().map(|e| e.to_lowercase()).collect(),
             items: Vec::new(),
             truncated: false,
@@ -95,6 +121,7 @@ impl LocalFolder {
     /// Shows another folder, keeping the kinds of file.
     pub fn go(&mut self, dir: impl Into<PathBuf>) {
         self.dir = dir.into();
+        self.trail = trail(&self.dir);
         self.read(MAX_LISTED);
     }
 
@@ -173,15 +200,7 @@ impl LocalFolder {
 
     /// Each named folder of the path with where it is.
     fn steps(&self) -> Vec<(String, PathBuf)> {
-        let mut at = PathBuf::new();
-        let mut steps = Vec::new();
-        for part in self.dir.components() {
-            at.push(part);
-            if let std::path::Component::Normal(name) = part {
-                steps.push((name.to_string_lossy().into_owned(), at.clone()));
-            }
-        }
-        steps
+        self.trail.clone()
     }
 
     /// The items as entries for the panel, in the same order.
@@ -317,10 +336,30 @@ mod tests {
         assert_eq!(crumbs.first().map(String::as_str), Some("This computer"));
         assert_eq!(crumbs.last().map(String::as_str), Some("Proposals"));
         // The step before the last is the scratch folder itself.
+        // The steps are the folder's real path (the temporary folder may sit behind a link).
+        let real = std::fs::canonicalize(&dir).unwrap();
         assert_eq!(folder.act(PlacesAction::Crumb(crumbs.len() - 2)), LocalOutcome::Stay);
-        assert_eq!(folder.dir(), dir);
+        assert_eq!(folder.dir(), real);
         assert_eq!(folder.act(PlacesAction::Crumb(999)), LocalOutcome::Stay, "a step that is not there is ignored");
-        assert_eq!(folder.dir(), dir);
+        assert_eq!(folder.dir(), real);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn a_path_that_steps_back_shows_only_real_ancestors() {
+        let dir = scratch("dotdot");
+        std::fs::create_dir_all(dir.join("Archive")).unwrap();
+        std::fs::create_dir_all(dir.join("Current")).unwrap();
+        let mut folder = LocalFolder::open(dir.join("Archive").join("..").join("Current"), &["docx"]);
+        let crumbs = folder.crumbs("This computer");
+        assert_eq!(crumbs.last().map(String::as_str), Some("Current"));
+        assert!(!crumbs.iter().any(|c| c == "Archive"), "Archive is not on the way to Current: {crumbs:?}");
+        assert_eq!(folder.act(PlacesAction::Crumb(crumbs.len() - 2)), LocalOutcome::Stay);
+        assert_eq!(folder.dir(), std::fs::canonicalize(&dir).unwrap(), "the step before Current is its real parent");
+
+        // Gone, and written with `..`: no way up rather than a wrong one.
+        let gone = LocalFolder::open(dir.join("Missing").join("..").join("Elsewhere"), &["docx"]);
+        assert_eq!(gone.crumbs("This computer"), ["This computer"]);
         let _ = std::fs::remove_dir_all(dir);
     }
 
