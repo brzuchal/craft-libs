@@ -1,14 +1,16 @@
 use super::*;
 use crate as spool;
 
+mod windows_native;
+
 #[test]
 fn spooler_arguments_and_printer_list() {
     let out = "printer Office_Laser is idle.  enabled since Thu Oct  1 09:00:00 2026\nprinter Label_Writer disabled since …\nsystem default destination: Office_Laser\n";
     assert_eq!(
         parse_lpstat(out),
         [
-            spool::Printer { name: "Office_Laser".into(), default: true, two_sided: None },
-            spool::Printer { name: "Label_Writer".into(), default: false, two_sided: None }
+            spool::Printer { name: "Office_Laser".into(), description: String::new(), default: true, two_sided: None },
+            spool::Printer { name: "Label_Writer".into(), description: String::new(), default: false, two_sided: None }
         ]
     );
     assert!(parse_lpstat("lpstat: No destinations added.\nno system default destination\n").is_empty());
@@ -43,6 +45,32 @@ fn lpstat_output_is_untranslated() {
 }
 
 #[test]
+fn a_queue_keeps_its_human_name() {
+    // A CUPS queue name can't hold dots, so macOS adds the printer at 192.0.2.15 as the queue
+    // `_192_0_2_15`. The dialog showed that underscored name; `lpstat -l` also gives the name the
+    // user knows, as the queue's Description.
+    let out = "printer _192_0_2_15 is idle.  enabled since Thu Oct  1 09:00:00 2026\n\tForm mounted:\n\tDescription: 192.0.2.15\n\tAlerts: none\n\tLocation: Description: not this one\nprinter Label_Writer disabled since Thu Oct  1 09:00:00 2026 -\n\treason unknown\n\tDescription:\nprinter Office_Laser is idle.\r\n\tDescription: Office Laser, 2nd floor\r\n\tDescription: a second one is ignored\nDescription: not indented, not a detail\nsystem default destination: _192_0_2_15\n";
+    assert_eq!(
+        parse_lpstat(out),
+        [
+            spool::Printer { name: "_192_0_2_15".into(), description: "192.0.2.15".into(), default: true, two_sided: None },
+            spool::Printer { name: "Label_Writer".into(), description: String::new(), default: false, two_sided: None },
+            spool::Printer { name: "Office_Laser".into(), description: "Office Laser, 2nd floor".into(), default: false, two_sided: None },
+        ],
+        "each queue takes its own first Description; an empty one stays empty"
+    );
+    // A description before any queue belongs to none, and a huge one is cut to a name's length.
+    assert!(parse_lpstat("\tDescription: orphan\n").is_empty());
+    // An empty first description is still the first: a later one doesn't replace it.
+    assert_eq!(parse_lpstat("printer Q is idle.\n\tDescription:\n\tDescription: Office\n")[0].description, "");
+    let long = format!("printer Q is idle.\n\tDescription: {}\n", "é".repeat(10_000));
+    assert_eq!(parse_lpstat(&long)[0].description.chars().count(), 256);
+    // The queues come from `lpstat -l`, so the descriptions are there to read.
+    let args: Vec<_> = spool::lpstat_command().get_args().map(|a| a.to_string_lossy().into_owned()).collect();
+    assert_eq!(args, ["-l", "-p", "-d"]);
+}
+
+#[test]
 fn driverless_printers_join_the_list_without_a_queue() {
     // A driverless network printer (IPP, discovered on the LAN) has no queue, so `lpstat -p`
     // never lists it — yet GTK's print dialog shows it and `lp` prints to it through a temporary
@@ -51,18 +79,21 @@ fn driverless_printers_join_the_list_without_a_queue() {
     assert_eq!(
         spool::printers_parsed(queues, Some("Basement_Color\nOffice_Laser\n")),
         [
-            spool::Printer { name: "Office_Laser".into(), default: true, two_sided: None },
-            spool::Printer { name: "Basement_Color".into(), default: false, two_sided: None },
+            spool::Printer { name: "Office_Laser".into(), description: String::new(), default: true, two_sided: None },
+            spool::Printer { name: "Basement_Color".into(), description: String::new(), default: false, two_sided: None },
         ],
         "queues first, then the driverless destination; the queue listed twice is not doubled"
     );
     // An old spooler without `-e` (CUPS < 1.7) keeps its queues; only the driverless names are lost.
-    assert_eq!(spool::printers_parsed(queues, None), [spool::Printer { name: "Office_Laser".into(), default: true, two_sided: None }]);
+    assert_eq!(
+        spool::printers_parsed(queues, None),
+        [spool::Printer { name: "Office_Laser".into(), description: String::new(), default: true, two_sided: None }]
+    );
     // The default can itself be driverless (`lpoptions -d` names a destination no queue exists
     // for): it keeps its marker, so the dialog preselects the user's default, not the first queue.
     assert_eq!(
         spool::printers_parsed("system default destination: Basement_Color\n", Some("Basement_Color\n")),
-        [spool::Printer { name: "Basement_Color".into(), default: true, two_sided: None }],
+        [spool::Printer { name: "Basement_Color".into(), description: String::new(), default: true, two_sided: None }],
         "a default destination without a queue is still the default"
     );
     assert!(spool::parse_lpstat_e("\n \n").is_empty(), "no destinations is empty, not [\"\"]");
@@ -154,164 +185,16 @@ fn windows_printers_carry_one_default_and_keep_their_names() {
     // Windows marks the system default with a `*` no queue name may contain; names hold spaces,
     // parentheses and non-ASCII letters, and the lines end with CRLF.
     let printers = parse_windows_printers("*Microsoft Print to PDF\r\nHP LaserJet 400 (Copy 2)\r\nКопир Canon iR\r\n\r\n*XPS via USB\r\n");
-    assert_eq!(printers[0], Printer { name: "Microsoft Print to PDF".into(), default: true, two_sided: None });
-    assert_eq!(printers[1], Printer { name: "HP LaserJet 400 (Copy 2)".into(), default: false, two_sided: None });
-    assert_eq!(printers[2], Printer { name: "Копир Canon iR".into(), default: false, two_sided: None });
+    assert_eq!(printers[0], Printer { name: "Microsoft Print to PDF".into(), description: String::new(), default: true, two_sided: None });
+    assert_eq!(printers[1], Printer { name: "HP LaserJet 400 (Copy 2)".into(), description: String::new(), default: false, two_sided: None });
+    assert_eq!(printers[2], Printer { name: "Копир Canon iR".into(), description: String::new(), default: false, two_sided: None });
     // A spooler marking two defaults: the first still wins, so the dialog has one to preselect.
-    assert_eq!(printers[3], Printer { name: "XPS via USB".into(), default: false, two_sided: None });
+    assert_eq!(printers[3], Printer { name: "XPS via USB".into(), description: String::new(), default: false, two_sided: None });
     assert_eq!(parse_windows_printers("\r\n"), Vec::new());
     let sided = parse_windows_printers("*Office PCL\t2\r\nOffice PS\t1\r\nTab\tName\t2\r\n");
-    assert_eq!(sided[0], Printer { name: "Office PCL".into(), default: true, two_sided: Some(true) });
-    assert_eq!(sided[1], Printer { name: "Office PS".into(), default: false, two_sided: Some(false) });
-    assert_eq!(sided[2], Printer { name: "Tab\tName".into(), default: false, two_sided: Some(true) });
-}
-
-#[test]
-fn the_windows_job_is_the_environment_of_the_print_script() {
-    let path = std::path::Path::new("C:\\Users\\me\\AppData\\Local\\Temp\\craft-print-42.pdf");
-    let job = Job {
-        printer: Some("HP \"Laser\" Jet".into()),
-        copies: 3,
-        duplex: Some(Duplex::ShortEdge),
-        grayscale: true,
-        title: "Angebot.pdf".into(),
-        ..Job::default()
-    };
-    let vars = windows_env_vars(path, &job);
-    let env = |key: &str| vars.iter().find(|(k, _)| k == key).map(|(_, v)| v.as_str()).unwrap();
-    assert_eq!(env("CRAFT_PRINT_FILE"), "C:\\Users\\me\\AppData\\Local\\Temp\\craft-print-42.pdf");
-    // Quotes and spaces in a printer name survive because nothing goes on the command line.
-    assert_eq!(env("CRAFT_PRINT_PRINTER"), "HP \"Laser\" Jet");
-    assert_eq!(env("CRAFT_PRINT_COPIES"), "3");
-    assert_eq!(env("CRAFT_PRINT_COLLATE"), "1");
-    assert_eq!(env("CRAFT_PRINT_DUPLEX"), "short-edge");
-    assert_eq!(env("CRAFT_PRINT_SCALING"), "exact");
-    assert_eq!(env("CRAFT_PRINT_GRAYSCALE"), "1");
-    assert_eq!(env("CRAFT_PRINT_TITLE"), "Angebot.pdf");
-    // No printer chosen means the system default: an empty name, not the word "default".
-    let one = |j: &Job, key: &str| windows_env_vars(path, j).into_iter().find(|(k, _)| k == key).unwrap().1;
-    assert_eq!(one(&Job::default(), "CRAFT_PRINT_PRINTER"), "");
-    assert_eq!(one(&Job::default(), "CRAFT_PRINT_DUPLEX"), "");
-    assert_eq!(one(&Job { scaling: Scaling::ShrinkToFit, ..Job::default() }, "CRAFT_PRINT_SCALING"), "shrink-to-fit");
-    assert_eq!(one(&Job { duplex: Some(Duplex::Off), ..Job::default() }, "CRAFT_PRINT_DUPLEX"), "off");
-    assert_eq!(one(&Job { duplex: Some(Duplex::LongEdge), ..Job::default() }, "CRAFT_PRINT_DUPLEX"), "long-edge");
-}
-
-/// Run a PowerShell script for the Windows-only tests: its stdout, or everything it said when
-/// it failed — the tests print that as the skip reason.
-#[cfg(windows)]
-fn windows_powershell(script: &str, envs: &[(&str, &str)]) -> Result<String, String> {
-    let mut c = std::process::Command::new("powershell");
-    c.args(["-NoProfile", "-NonInteractive", "-Command", &format!("$ErrorActionPreference = 'Stop'; {script}")]);
-    for (k, v) in envs {
-        c.env(k, v);
-    }
-    match c.output() {
-        Ok(o) if o.status.success() => Ok(String::from_utf8_lossy(&o.stdout).into_owned()),
-        Ok(o) => Err(format!("{} {}", String::from_utf8_lossy(&o.stderr).trim(), String::from_utf8_lossy(&o.stdout).trim())),
-        Err(e) => Err(e.to_string()),
-    }
-}
-
-/// Windows: the printer list comes from the spooler. A bare machine may have no printer; the
-/// list that exists has real names and at most one default.
-#[cfg(windows)]
-#[test]
-fn windows_lists_the_printers_the_system_knows() {
-    let printers = spool::printers();
-    assert!(printers.iter().all(|p| !p.name.trim().is_empty() && p.two_sided.is_some()), "{printers:?}");
-    assert!(printers.iter().filter(|p| p.default).count() <= 1, "{printers:?}");
-}
-
-/// Windows: the embedded print script is valid PowerShell, checked on every machine — including
-/// runners that have no printer to print to.
-#[cfg(windows)]
-#[test]
-fn the_windows_print_script_parses() {
-    let path = std::env::temp_dir().join(format!("craft-print-script-{}.ps1", std::process::id()));
-    std::fs::write(&path, spool::WINDOWS_PRINT_SCRIPT).unwrap();
-    let errors = windows_powershell(
-        "$tokens = $null; $errors = $null; [System.Management.Automation.Language.Parser]::ParseFile($env:CRAFT_TEST_SCRIPT, [ref]$tokens, [ref]$errors) > $null; $errors.Count",
-        &[("CRAFT_TEST_SCRIPT", path.to_str().unwrap())],
-    );
-    let _ = std::fs::remove_file(&path);
-    assert_eq!(errors.as_deref().map(str::trim), Ok("0"), "parse errors: {errors:?}");
-}
-
-/// Windows, end to end: the script renders the job's sheets with Windows.Data.Pdf on any
-/// machine — CI included, no printer needed (the dry run renders sheets in memory) — and, where a paused test printer can be added, a real job lands in its queue.
-/// Its driver is the inbox "Generic / Text Only"; a machine that cannot add one (no rights, no
-/// driver) skips that half, as the CUPS tests skip where CUPS isn't running.
-#[cfg(windows)]
-#[test]
-fn the_print_script_renders_the_job_and_reaches_the_spooler() {
-    let pdf = fixture();
-    // The printer name is deliberately wrong: the dry run stops before the driver is touched.
-    let job = Job { printer: Some("no such printer".into()), title: "test.pdf".into(), ..Job::default() };
-    let dry = spool::windows_submit(&pdf, &job, &[("CRAFT_PRINT_DRYRUN", "1")]);
-    assert_eq!(dry.as_deref(), Ok("rendered 2 sheet(s)"), "{dry:?}");
-
-    let name = format!("Craft Test Print {}", std::process::id());
-    let name = name.as_str();
-    let added = windows_powershell(
-        r#"
-        $name = $env:CRAFT_TEST_PRINTER
-        $port = $name + '.prn'
-        if (Get-Printer -Name $name -ErrorAction SilentlyContinue) { throw 'test queue already exists' }
-        if ((Get-PrinterPort -Name $port -ErrorAction SilentlyContinue) -or (Test-Path -LiteralPath $port)) {
-            throw 'test port already exists'
-        }
-        $portCreated = $false
-        try {
-            # FILE: can ask GDI for an output filename even for a paused queue. A uniquely named
-            # local port has no prompt; the paused job is removed before it can write.
-            Add-PrinterPort -Name $port
-            $portCreated = $true
-            Add-Printer -Name $name -DriverName 'Generic / Text Only' -PortName $port
-            $queue = Get-CimInstance Win32_Printer | Where-Object Name -eq $name
-            if (-not $queue) { throw 'test queue could not be found' }
-            $paused = Invoke-CimMethod -InputObject $queue -MethodName Pause
-            if ($paused.ReturnValue -ne 0) { throw 'test queue could not be paused' }
-        } catch {
-            Remove-Printer -Name $name -ErrorAction SilentlyContinue
-            if ($portCreated) { Remove-PrinterPort -Name $port -ComputerName $env:COMPUTERNAME -ErrorAction SilentlyContinue }
-            throw
-        }
-        "#,
-        &[("CRAFT_TEST_PRINTER", name)],
-    );
-    if let Err(why) = added {
-        assert_ne!(std::env::var("CRAFT_PRINT_REQUIRE_QUEUE").as_deref(), Ok("1"), "CI requires a prepared paused printer: {why}");
-        eprintln!("skipping the real print: the test printer could not be prepared: {why}");
-        return;
-    }
-    let job = Job { printer: Some(name.into()), title: "test.pdf".into(), ..Job::default() };
-    let sent = spool::submit(&pdf, &job);
-    let queued = windows_powershell(
-        &format!("if (Get-PrintJob -PrinterName '{name}') {{ (Get-PrintJob -PrinterName '{name}' | Measure-Object).Count }} else {{ 0 }}"),
-        &[],
-    );
-    let cleaned = windows_powershell(
-        r#"
-        $name = $env:CRAFT_TEST_PRINTER
-        $port = $name + '.prn'
-        try { Get-PrintJob -PrinterName $name | Remove-PrintJob } finally {
-            try { Remove-Printer -Name $name } finally {
-                Remove-PrinterPort -Name $port -ComputerName $env:COMPUTERNAME
-                if (Test-Path -LiteralPath $port) { Remove-Item -LiteralPath $port }
-            }
-        }
-        if (Get-Printer -Name $name -ErrorAction SilentlyContinue) { throw 'test queue was not removed' }
-        if ((Get-PrinterPort -Name $port -ErrorAction SilentlyContinue) -or (Test-Path -LiteralPath $port)) {
-            throw 'test port was not removed'
-        }
-        Write-Output 'cleaned'
-        "#,
-        &[("CRAFT_TEST_PRINTER", name)],
-    );
-    assert!(sent.is_ok(), "{sent:?}");
-    assert_eq!(queued.as_deref().map(str::trim), Ok("1"), "the job is in the paused printer's queue: {queued:?}");
-    assert!(cleaned.is_ok(), "the test printer is removed again: {cleaned:?}");
+    assert_eq!(sided[0], Printer { name: "Office PCL".into(), description: String::new(), default: true, two_sided: Some(true) });
+    assert_eq!(sided[1], Printer { name: "Office PS".into(), description: String::new(), default: false, two_sided: Some(false) });
+    assert_eq!(sided[2], Printer { name: "Tab\tName".into(), description: String::new(), default: false, two_sided: Some(true) });
 }
 
 /// A PPD shaped like a Fiery's: installable options, multi-line PostScript in the choices, Latin-1
@@ -374,6 +257,29 @@ fn printer_options_come_from_the_ppd() {
 }
 
 #[test]
+fn ppd_labels_are_capped_before_every_option_copies_its_group() {
+    let long = "G".repeat(100_000);
+    let mut ppd = format!("*OpenGroup: Big/{long}\n");
+    for i in 0..300 {
+        ppd += &format!("*OpenUI *Opt{i}/{long}: PickOne\n*Opt{i} A/{long}: \"\"\n*CloseUI: *Opt{i}\n");
+    }
+    let options = spool::parse_ppd(&ppd);
+    assert_eq!(options.len(), 300);
+    assert!(options.iter().all(|o| o.group.len() <= 256 && o.label.len() <= 256 && o.choices[0].1.len() <= 256));
+    assert_eq!(options[0].group, "G".repeat(256));
+}
+
+#[test]
+fn many_driverless_destinations_merge_in_linear_time() {
+    let names: String = (0..200_000).map(|i| format!("dest_{i}\n")).collect();
+    let started = std::time::Instant::now();
+    let printers = spool::printers_parsed("printer Office is idle.\n", Some(&format!("Office\n{names}dest_7\n")));
+    assert!(started.elapsed() < std::time::Duration::from_secs(10), "{:?}", started.elapsed());
+    assert_eq!(printers.len(), 200_001, "each destination once, queues first");
+    assert_eq!(printers[0].name, "Office");
+}
+
+#[test]
 fn printer_option_defaults_and_job_arguments() {
     let current =
         spool::parse_lpoptions("InputSlot/Paper tray: AutoSelect *Tray2 ManualFeed\nEFRaster/Print queue action: *False Hold\nbroken line\n");
@@ -393,86 +299,6 @@ fn printer_option_defaults_and_job_arguments() {
     assert!(spool::printer_options("../../etc/passwd").is_empty(), "not a queue name");
 }
 
-#[cfg(windows)]
-fn fixture() -> Vec<u8> {
-    // Minimal, asset-free PDF with portrait and landscape Letter sheets.
-    let objects = [
-        "<< /Type /Catalog /Pages 2 0 R >>",
-        "<< /Type /Pages /Kids [3 0 R 4 0 R] /Count 2 >>",
-        "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << >> /Contents 5 0 R >>",
-        "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 792 612] /Resources << >> /Contents 5 0 R >>",
-        "<< /Length 26 >>\nstream\n0 0 0 rg 36 36 72 72 re f\nendstream",
-    ];
-    let mut pdf = String::from("%PDF-1.4\n");
-    let mut offsets = vec![0];
-    for (i, object) in objects.iter().enumerate() {
-        offsets.push(pdf.len());
-        pdf.push_str(&format!("{} 0 obj\n{object}\nendobj\n", i + 1));
-    }
-    let xref = pdf.len();
-    pdf.push_str(&format!("xref\n0 {}\n0000000000 65535 f \n", offsets.len()));
-    for offset in offsets.iter().skip(1) {
-        pdf.push_str(&format!("{offset:010} 00000 n \n"));
-    }
-    pdf.push_str(&format!("trailer\n<< /Size {} /Root 1 0 R >>\nstartxref\n{xref}\n%%EOF\n", offsets.len()));
-    pdf.into_bytes()
-}
-
-#[cfg(windows)]
-#[test]
-fn windows_preserves_sheet_size_orientation_and_binding_edge() {
-    let output = windows_powershell(WINDOWS_PRINT_SCRIPT, &[("CRAFT_PRINT_TEST_SETTINGS", "1")]).unwrap();
-    let r: serde_json::Value = serde_json::from_str(output.trim()).unwrap();
-    assert_eq!(r["LongEdge"], "Vertical");
-    assert_eq!(r["ShortEdge"], "Horizontal");
-    assert_eq!(r["Off"], "Simplex");
-    assert_eq!(r["DefaultDuplex"], "Vertical");
-    assert_eq!(r["ForcedSimplex"], "Simplex");
-    assert_eq!(r["FallbackPaper"], "Driver Letter");
-    // Windows PowerShell serializes whole-valued floats as JSON integers. Compare their
-    // numeric values rather than requiring one particular JSON number representation.
-    let boxes = r["ShrinkBoxes"].as_array().unwrap();
-    let expected = [[0.0, 20.0, 800.0, 1000.0], [200.0, 270.0, 400.0, 500.0]];
-    assert_eq!(boxes.len(), expected.len());
-    for (actual, expected) in boxes.iter().zip(expected) {
-        let actual = actual.as_array().unwrap();
-        assert_eq!(actual.len(), expected.len());
-        for (actual, expected) in actual.iter().zip(expected) {
-            assert_eq!(actual.as_f64(), Some(expected));
-        }
-    }
-    let sheets = r["Sheets"].as_array().unwrap();
-    assert_eq!((sheets[0]["Width"].as_u64(), sheets[0]["Height"].as_u64()), (Some(850), Some(1100)));
-    assert_eq!(sheets[0]["Name"], "Driver Letter");
-    assert_eq!(sheets[0]["Pixels"], serde_json::json!([1275, 1650]));
-    assert_eq!(sheets[1]["Landscape"], true);
-    assert_eq!(sheets[1]["Pixels"], serde_json::json!([1650, 1275]));
-    assert_eq!((sheets[2]["Width"].as_u64(), sheets[2]["Height"].as_u64()), (Some(827), Some(1169)));
-    assert_eq!(sheets[3]["Height"], 1400);
-    for s in sheets {
-        assert_eq!(s["Margins"], serde_json::json!([0, 0, 0, 0]));
-        assert_eq!(s["X"].as_f64(), Some(-25.0));
-        assert_eq!(s["Y"].as_f64(), Some(-30.0));
-    }
-    assert_eq!(sheets[0]["DrawWidth"].as_f64(), Some(850.0));
-    assert_eq!(sheets[1]["DrawWidth"].as_f64(), Some(1100.0));
-    let pixels = r["LargePixels"].as_array().unwrap();
-    assert!(pixels[0].as_u64().unwrap() * pixels[1].as_u64().unwrap() <= 64_000_000);
-    assert_eq!(r["InvalidRejected"], true);
-}
-
-#[cfg(windows)]
-#[test]
-fn windows_job_files_are_distinct_and_removed_on_drop() {
-    let first = windows_job_file(b"first").unwrap();
-    let second = windows_job_file(b"second").unwrap();
-    assert_ne!(first.to_path_buf(), second.to_path_buf());
-    assert_eq!(std::fs::read(&first).unwrap(), b"first");
-    let path = first.to_path_buf();
-    drop(first);
-    assert!(!path.exists());
-}
-
 #[test]
 fn command_previews_do_not_require_pdf_files() {
     let job = Job { printer: Some("Office (east)".into()), copies: 2, ..Job::default() };
@@ -481,8 +307,10 @@ fn command_previews_do_not_require_pdf_files() {
         assert_eq!(preview[0], "lp");
         assert_eq!(preview[1..], lp_args(&job));
     } else {
-        assert_eq!(preview[0], "powershell");
-        assert!(!preview.join(" ").contains(".pdf"));
+        assert_eq!(
+            preview,
+            ["xps-print", "printer=Office (east)", "copies=2", "collate=true", "duplex=(queue default)", "scaling=exact", "color=(driver default)"]
+        );
     }
 }
 
@@ -495,15 +323,4 @@ fn queue_duplex_defaults_and_explicit_scaling_reach_the_spooler() {
     let shrink = lp_args(&Job { scaling: Scaling::ShrinkToFit, ..Job::default() });
     assert!(shrink.iter().any(|a| a == "print-scaling=auto-fit"));
     assert!(!shrink.iter().any(|a| a.starts_with("fit-to-page=")));
-}
-
-/// A portable app must never resolve PowerShell from its own directory.
-#[cfg(windows)]
-#[test]
-fn windows_starts_powershell_by_its_full_path() {
-    let command = powershell_command("$null");
-    let program = std::path::Path::new(command.get_program());
-    assert!(program.is_absolute(), "{program:?}");
-    assert!(program.ends_with("System32/WindowsPowerShell/v1.0/powershell.exe"), "{program:?}");
-    assert!(program.is_file(), "{program:?}");
 }

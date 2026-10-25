@@ -4,3 +4,5 @@ plans/
 /target
 .DS_Store
 /.claude/
+.idea/
+/vendor/*/target
