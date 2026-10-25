@@ -421,7 +421,7 @@ pub fn menu(ui: &mut Ui, places: &[Place<'_>], labels: PlacesLabels<'_>, add_pla
 fn caption(ui: &mut Ui, s: &PlacesStyle, label: &str) {
     let (rect, response) = ui.allocate_exact_size(vec2(ui.available_width(), s.small_font + 10.0), Sense::hover());
     text(ui.painter(), pos2(rect.left() + PAD, rect.center().y), rect.width() - PAD, label, s.small_font, s.weak);
-    response.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Label, true, label));
+    response.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Label, true, label));
 }
 
 fn place_row(ui: &mut Ui, s: &PlacesStyle, icon: IconPainter<'_>, place: &Place<'_>, selected: bool) -> Response {
@@ -455,7 +455,7 @@ fn place_row(ui: &mut Ui, s: &PlacesStyle, icon: IconPainter<'_>, place: &Place<
         Some(detail) => format!("{}, {detail}", place.label),
         None => place.label.to_owned(),
     };
-    response.widget_info(|| egui::WidgetInfo::selected(egui::WidgetType::RadioButton, true, selected, &name));
+    response.widget_info(|| egui::WidgetInfo::selected(egui::Role::RadioButton, true, selected, &name));
     response
 }
 
@@ -467,7 +467,7 @@ fn action_row(ui: &mut Ui, s: &PlacesStyle, icon: IconPainter<'_>, which: Places
     focus_ring(ui, s, &response, rect);
     icon(which, ui.painter(), icon_rect(rect), s.weak);
     text(ui.painter(), pos2(rect.left() + TEXT_X, rect.center().y), rect.width() - TEXT_X - PAD, label, s.font, s.weak);
-    response.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, true, label));
+    response.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, label));
     response
 }
 
@@ -476,13 +476,13 @@ fn crumb(ui: &mut Ui, s: &PlacesStyle, label: &str, last: bool) -> Response {
     let (rect, response) = ui.allocate_exact_size(vec2(width, s.row_height - 6.0), if last { Sense::hover() } else { Sense::click() });
     text(ui.painter(), rect.left_center(), rect.width() + 1.0, label, s.font, if last { s.text } else { s.weak });
     if last {
-        response.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Label, true, label));
+        response.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Label, true, label));
         return response;
     }
     if response.hovered() || response.has_focus() {
         ui.painter().hline(rect.x_range(), rect.center().y + s.font * 0.62, Stroke::new(1.0, s.weak));
     }
-    response.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Link, true, label));
+    response.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Link, true, label));
     response.on_hover_cursor(CursorIcon::PointingHand)
 }
 
@@ -540,7 +540,7 @@ fn list_row(ui: &mut Ui, s: &PlacesStyle, icon: IconPainter<'_>, entry: &PlaceEn
     let taken = detail.size().x;
     ui.painter().galley(pos2(rect.right() - PAD - taken, rect.center().y - detail.size().y / 2.0), detail, s.weak);
     text(ui.painter(), pos2(rect.left() + TEXT_X, rect.center().y), rect.width() - TEXT_X - PAD * 2.0 - taken, entry.name, s.font, s.text);
-    response.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, true, spoken(entry)));
+    response.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, spoken(entry)));
     response
 }
 
@@ -575,7 +575,7 @@ fn tile(
     text(ui.painter(), pos2(rect.left(), name_y), TILE_WIDTH, entry.name, s.font, s.text);
     let colour = if entry.attention { s.attention } else { s.weak };
     text(ui.painter(), pos2(rect.left(), name_y + (s.font + s.small_font) / 2.0 + 3.0), TILE_WIDTH, entry.detail, s.small_font, colour);
-    response.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, true, spoken(entry)));
+    response.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, spoken(entry)));
     response
 }
 

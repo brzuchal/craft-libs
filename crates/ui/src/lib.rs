@@ -6,6 +6,7 @@
 //! accept focused style values and return egui responses; no application engine is required.
 
 pub mod buttons;
+pub mod capture;
 pub mod docking;
 pub mod file_nav;
 mod focus;
@@ -15,4 +16,5 @@ pub mod panes;
 pub mod places;
 pub mod printing;
 pub mod tabs;
+pub mod text;
 pub mod theme;

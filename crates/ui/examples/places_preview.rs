@@ -191,7 +191,7 @@ fn draw(ui: &mut egui::Ui, scene: &mut Scene) {
             let bar = menu_bar(ui, full, &v, &["File", "Edit", "Clip", "Sequence", "View", "Window", "Help"], Some(0));
             let anchor = ui.interact(
                 Rect::from_min_size(bar.left_top() + vec2(6.0, 0.0), vec2(40.0, bar.height())),
-                ui.id().with("file"),
+                ui.scope_id().with("file"),
                 egui::Sense::hover(),
             );
             egui::Popup::menu(&anchor).open(true).show(|ui| {

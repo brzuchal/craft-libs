@@ -273,8 +273,8 @@ fn row<K: Copy>(
     let cut = galley.elided;
     ui.painter().galley(pos2(rect.left() + TEXT_X, rect.center().y - galley.size().y / 2.0), galley, colour);
     response.widget_info(|| match showing {
-        Some(showing) => egui::WidgetInfo::selected(egui::WidgetType::Button, enabled, showing, label),
-        None => egui::WidgetInfo::labeled(egui::WidgetType::Button, enabled, label),
+        Some(showing) => egui::WidgetInfo::selected(egui::Role::Button, enabled, showing, label),
+        None => egui::WidgetInfo::labeled(egui::Role::Button, enabled, label),
     });
     if cut { response.on_hover_text(label) } else { response }
 }
