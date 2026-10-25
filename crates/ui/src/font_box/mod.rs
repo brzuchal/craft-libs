@@ -159,7 +159,7 @@ impl<'a> FontBox<'a> {
 
     pub fn show(self, ui: &mut Ui) -> FontBoxResponse {
         let mut out = FontBoxResponse::default();
-        let id = ui.id().with("craft_font_box").with(ui.next_auto_id());
+        let id = ui.scope_id().with("craft_font_box").with(ui.next_auto_id());
         let enabled = self.enabled;
         let hint = if enabled { None } else { self.hint };
         ui.add_enabled_ui(enabled, |ui| {
@@ -267,7 +267,7 @@ fn field(
             .id(id.with("edit"))
             .frame(egui::Frame::NONE)
             .margin(vec2(0.0, 0.0))
-            .vertical_align(Align::Center)
+            .align(egui::Align2::LEFT_CENTER)
             .font(FontId::proportional(style.font))
             .text_color(style.text)
             .desired_width(text_rect.width()),
@@ -290,7 +290,7 @@ fn field(
     painter.rect_stroke(rect, CornerRadius::same(style.radius), stroke, StrokeKind::Inside);
     let c = chevron.center();
     painter.line(vec![pos2(c.x - 4.0, c.y - 2.0), pos2(c.x, c.y + 2.0), pos2(c.x + 4.0, c.y - 2.0)], Stroke::new(1.2, style.chevron));
-    chev.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::ComboBox, ui.is_enabled(), label));
+    chev.widget_info(|| egui::WidgetInfo::labeled(egui::Role::ComboBox, ui.is_enabled(), label));
 
     let mut committed = None;
     if edit.has_focus() {
@@ -384,7 +384,7 @@ fn glyph_button(ui: &mut Ui, style: &FontBoxStyle, glyph: Glyph, label: &str) ->
         }
     }
     let (label, enabled) = (label.to_string(), ui.is_enabled());
-    response.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, enabled, &label));
+    response.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, enabled, &label));
     response.on_hover_text(label)
 }
 

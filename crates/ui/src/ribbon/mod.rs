@@ -144,7 +144,7 @@ pub fn captions_default() -> bool {
 }
 
 fn captions_id() -> egui::Id {
-    egui::Id::new("craft_ribbon_captions")
+    egui::Id::unique("craft_ribbon_captions")
 }
 
 /// What a group reports.
@@ -229,7 +229,7 @@ impl<'a> RibbonGroup<'a> {
                     StrokeKind::Inside,
                 );
                 let enabled = ui.is_enabled();
-                resp.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, enabled, tip));
+                resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, enabled, tip));
                 launcher_clicked = resp.on_hover_text(tip).clicked();
             }
         }
@@ -253,7 +253,7 @@ pub fn toggle(ui: &mut Ui, style: &RibbonStyle, selected: bool, label: &str, pai
     }
     paint(painter, rect.shrink(4.0), style.icon);
     let (label, enabled) = (label.to_string(), ui.is_enabled());
-    response.widget_info(|| egui::WidgetInfo::selected(egui::WidgetType::Checkbox, enabled, selected, &label));
+    response.widget_info(|| egui::WidgetInfo::selected(egui::Role::CheckBox, enabled, selected, &label));
     response.on_hover_text(label)
 }
 
@@ -268,7 +268,7 @@ pub fn large_button(ui: &mut Ui, style: &RibbonStyle, label: &str, paint: impl F
     paint(ui.painter(), icon, style.icon);
     ui.painter().text(pos2(rect.center().x, rect.bottom() - 10.0), Align2::CENTER_CENTER, label, FontId::proportional(12.0), style.icon);
     let (label, enabled) = (label.to_string(), ui.is_enabled());
-    response.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, enabled, &label));
+    response.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, enabled, &label));
     response
 }
 
@@ -282,7 +282,7 @@ pub fn small_button(ui: &mut Ui, style: &RibbonStyle, label: &str, paint: impl F
     paint(ui.painter(), Rect::from_center_size(pos2(rect.left() + 13.0, rect.center().y), vec2(16.0, 16.0)), style.icon);
     ui.painter().text(pos2(rect.left() + 26.0, rect.center().y), Align2::LEFT_CENTER, label, FontId::proportional(12.0), style.icon);
     let (label, enabled) = (label.to_string(), ui.is_enabled());
-    response.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, enabled, &label));
+    response.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, enabled, &label));
     response
 }
 

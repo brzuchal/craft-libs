@@ -83,7 +83,7 @@ pub fn item(ui: &mut Ui, style: &StatusBarStyle, text: &str) -> Response {
     }
     ui.painter().galley(pos2(rect.left() + 4.0, rect.center().y - galley.size().y / 2.0), galley, style.text);
     let (text, enabled) = (text.to_string(), ui.is_enabled());
-    response.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, enabled, &text));
+    response.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, enabled, &text));
     response
 }
 
@@ -98,7 +98,7 @@ pub fn view_button(ui: &mut Ui, style: &StatusBarStyle, selected: bool, label: &
     }
     paint(ui.painter(), Rect::from_center_size(rect.center(), vec2(14.0, 14.0)), style.icon);
     let (label, enabled) = (label.to_string(), ui.is_enabled());
-    response.widget_info(|| egui::WidgetInfo::selected(egui::WidgetType::RadioButton, enabled, selected, &label));
+    response.widget_info(|| egui::WidgetInfo::selected(egui::Role::RadioButton, enabled, selected, &label));
     response.on_hover_text(label)
 }
 
@@ -112,7 +112,7 @@ pub fn text_button(ui: &mut Ui, style: &StatusBarStyle, label: &str, paint: impl
     paint(ui.painter(), Rect::from_center_size(pos2(rect.left() + 11.0, rect.center().y), vec2(13.0, 13.0)), style.icon);
     ui.painter().text(pos2(rect.left() + 21.0, rect.center().y), Align2::LEFT_CENTER, label, FontId::proportional(style.font), style.text);
     let (label, enabled) = (label.to_string(), ui.is_enabled());
-    response.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, enabled, &label));
+    response.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, enabled, &label));
     response
 }
 
