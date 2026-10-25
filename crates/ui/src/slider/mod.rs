@@ -236,6 +236,8 @@ impl<'a> Slider<'a> {
                     *self.value = v;
                     response.mark_changed();
                 }
+                // The thumb shows the released value this frame too, not the re-seeded one.
+                thumb_fraction = self.fraction(v);
             }
             if response.drag_stopped() || !response.dragged() {
                 ui.data_mut(|d| d.remove::<f64>(drag_id));
