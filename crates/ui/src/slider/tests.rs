@@ -281,6 +281,14 @@ fn typed_values_drop_the_suffix_even_when_it_holds_a_digit() {
     assert_eq!(parse_typed("30 f/1s", "f/1s"), Some(30.0), "the suffix's own digit is not read as part of the number");
     assert_eq!(parse_typed("24 fp", "fps"), Some(24.0), "a half-typed suffix");
     assert_eq!(parse_typed("fast", "%"), None);
+    // Anything else after the number is not a value; a trailing separator still is.
+    assert_eq!(parse_typed("12xyz", "%"), None);
+    assert_eq!(parse_typed("12 pt", "%"), None);
+    assert_eq!(parse_typed("12%x", "%"), None);
+    assert_eq!(parse_typed("12.", "%"), Some(12.0));
+    assert_eq!(parse_typed("12,", "%"), Some(12.0));
+    assert_eq!(parse_typed("12", ""), Some(12.0));
+    assert_eq!(parse_typed("12x", ""), None);
 }
 
 #[test]
