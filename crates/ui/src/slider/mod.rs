@@ -91,6 +91,7 @@ pub struct Slider<'a> {
     step: Option<f64>,
     mark: Option<f64>,
     field: Option<(usize, &'a str)>,
+    text: Option<(usize, &'a str)>,
 }
 
 const HEIGHT: f32 = 20.0;
@@ -99,7 +100,7 @@ const THUMB_RADIUS: f32 = 7.0;
 impl<'a> Slider<'a> {
     /// `label` names the slider for assistive technology and becomes its tooltip.
     pub fn new(value: &'a mut f64, range: RangeInclusive<f64>, label: &'a str, style: &'a SliderStyle) -> Self {
-        Self { value, range, label, style, width: 110.0, scale: Scale::Linear, step: None, mark: None, field: None }
+        Self { value, range, label, style, width: 110.0, scale: Scale::Linear, step: None, mark: None, field: None, text: None }
     }
 
     /// The track's width in points (default 110).
@@ -129,6 +130,13 @@ impl<'a> Slider<'a> {
     /// (`%`, `×`, ` pt`). The field accepts a comma or a point and ignores the suffix when typed.
     pub fn editable(mut self, decimals: usize, suffix: &'a str) -> Self {
         self.field = Some((decimals.min(6), suffix));
+        self
+    }
+
+    /// How assistive technology reads the value (`100%` for `(0, "%")`), without a field. An
+    /// [`Slider::editable`] slider reads its value the way the field shows it.
+    pub fn value_text(mut self, decimals: usize, suffix: &'a str) -> Self {
+        self.text = Some((decimals.min(6), suffix));
         self
     }
 
@@ -293,7 +301,16 @@ impl<'a> Slider<'a> {
 
         let value = *self.value;
         let label = self.label.to_string();
-        response.widget_info(|| egui::WidgetInfo::slider(enabled, value, &label));
+        let text = self.field.or(self.text).map(|(d, suffix)| format!("{value:.d$}{suffix}"));
+        response.widget_info(|| egui::WidgetInfo { current_text_value: text.clone(), ..egui::WidgetInfo::slider(enabled, value, &label) });
+        // The range and step, in the value's own units, as egui's slider reports them.
+        ui.ctx().accesskit_node_builder(response.id, |node| {
+            node.set_min_numeric_value(*self.range.start());
+            node.set_max_numeric_value(*self.range.end());
+            if let Some(step) = self.step {
+                node.set_numeric_value_step(step);
+            }
+        });
         let mut response = response.on_hover_text(self.label);
 
         if let Some((decimals, suffix)) = self.field {

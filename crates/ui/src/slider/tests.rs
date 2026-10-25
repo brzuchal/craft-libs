@@ -151,6 +151,33 @@ fn assistive_technology_sees_a_labelled_slider() {
     let node = update.nodes.iter().map(|(_, n)| n).find(|n| n.role() == egui::accesskit::Role::Slider).expect("a slider node");
     assert_eq!(node.numeric_value(), Some(100.0));
     assert_eq!(node.label(), Some("Zoom"));
+    assert_eq!((node.min_numeric_value(), node.max_numeric_value()), (Some(10.0), Some(400.0)), "the range too");
+}
+
+#[test]
+fn assistive_technology_reads_the_zoom_bar_in_percent() {
+    let ctx = Context::default();
+    ctx.enable_accesskit();
+    let mut p = 100.0;
+    let style = ZoomBarStyle {
+        slider: SliderStyle::from_visuals(&egui::Visuals::light()),
+        icon: Color32::GRAY,
+        hover: Color32::LIGHT_GRAY,
+        text: Color32::GRAY,
+        font: 12.0,
+    };
+    let labels = ZoomBarLabels { zoom: "Zoom", zoom_in: "Zoom In", zoom_out: "Zoom Out" };
+    let mut out = ctx.run_ui(RawInput::default(), |ui| {
+        ZoomBar::new(&mut p, 10.0..=400.0, labels, &style).percent_label("Zoom level").show(ui);
+    });
+    out.textures_delta.clear();
+    let update = out.platform_output.accesskit_update.expect("accesskit is on");
+    let nodes: Vec<_> = update.nodes.iter().map(|(_, n)| n).collect();
+    let slider = nodes.iter().find(|n| n.role() == egui::accesskit::Role::Slider).expect("a slider node");
+    assert_eq!((slider.label(), slider.value()), (Some("Zoom"), Some("100%")));
+    assert_eq!((slider.min_numeric_value(), slider.max_numeric_value(), slider.numeric_value_step()), (Some(10.0), Some(400.0), Some(1.0)));
+    let level = nodes.iter().find(|n| n.label() == Some("Zoom level")).expect("the percentage is named");
+    assert_eq!((level.role(), level.value()), (egui::accesskit::Role::Button, Some("100%")));
 }
 
 #[test]
