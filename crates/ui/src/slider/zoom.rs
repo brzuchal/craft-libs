@@ -131,9 +131,10 @@ impl<'a> ZoomBar<'a> {
             let (rect, resp) = ui.allocate_exact_size(vec2(label_w, size.y), Sense::click());
             ui.painter().text(rect.right_center(), Align2::RIGHT_CENTER, format!("{:.0}%", *percent), FontId::proportional(style.font), style.text);
             let shown = format!("{:.0}%", *percent);
+            let enabled = ui.is_enabled();
             resp.widget_info(|| egui::WidgetInfo {
                 current_text_value: Some(shown.clone()),
-                ..egui::WidgetInfo::labeled(egui::WidgetType::Button, true, percent_name)
+                ..egui::WidgetInfo::labeled(egui::WidgetType::Button, enabled, percent_name)
             });
             percent_clicked = resp.on_hover_text(percent_name).clicked();
         });
@@ -154,6 +155,7 @@ fn glyph_button(ui: &mut Ui, plus: bool, label: &str, style: &ZoomBarStyle) -> b
     if plus {
         ui.painter().line_segment([pos2(c.x, c.y - half), pos2(c.x, c.y + half)], stroke);
     }
-    resp.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, true, label));
+    let enabled = ui.is_enabled();
+    resp.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, enabled, label));
     resp.on_hover_text(label).clicked()
 }

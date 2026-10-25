@@ -178,6 +178,19 @@ fn assistive_technology_reads_the_zoom_bar_in_percent() {
     assert_eq!((slider.min_numeric_value(), slider.max_numeric_value(), slider.numeric_value_step()), (Some(10.0), Some(400.0), Some(1.0)));
     let level = nodes.iter().find(|n| n.label() == Some("Zoom level")).expect("the percentage is named");
     assert_eq!((level.role(), level.value()), (egui::accesskit::Role::Button, Some("100%")));
+    assert!(nodes.iter().all(|n| !n.is_disabled()), "an enabled bar reads as enabled");
+
+    // In a disabled Ui every part, buttons and percentage included, reads as disabled.
+    let mut out = ctx.run_ui(RawInput::default(), |ui| {
+        ui.disable();
+        ZoomBar::new(&mut p, 10.0..=400.0, labels, &style).percent_label("Zoom level").show(ui);
+    });
+    out.textures_delta.clear();
+    let update = out.platform_output.accesskit_update.expect("accesskit is on");
+    for name in ["Zoom", "Zoom In", "Zoom Out", "Zoom level"] {
+        let node = update.nodes.iter().map(|(_, n)| n).find(|n| n.label() == Some(name)).unwrap_or_else(|| panic!("{name}"));
+        assert!(node.is_disabled(), "{name} reads as disabled");
+    }
 }
 
 #[test]
