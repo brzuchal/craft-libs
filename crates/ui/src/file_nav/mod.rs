@@ -223,14 +223,12 @@ impl<'a, K: Copy + PartialEq> FileNav<'a, K> {
             };
             if fits {
                 pages_and(ui, &mut order, false);
-                let mut from_the_bottom = Vec::with_capacity(foot.len());
-                ui.with_layout(Layout::bottom_up(Align::Min), |ui| {
-                    ui.add_space(s.padding);
-                    for item in foot.iter().rev() {
-                        from_the_bottom.push(entry(ui, item, s.foot_row_height, &s.foot_font));
-                    }
-                });
-                order.extend(from_the_bottom.into_iter().rev().flatten());
+                // The foot sits at the bottom but is built from the top down, so the Tab key meets
+                // its entries in the order they are drawn, as the arrow keys do.
+                ui.add_space((rect.bottom() - foot_height - ui.cursor().min.y).max(0.0));
+                for item in foot {
+                    order.extend(entry(ui, item, s.foot_row_height, &s.foot_font));
+                }
             } else {
                 egui::ScrollArea::vertical().id_salt("craft-ui/file-nav").auto_shrink([false, false]).show(ui, |ui| pages_and(ui, &mut order, true));
             }

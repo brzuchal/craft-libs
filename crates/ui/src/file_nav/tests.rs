@@ -120,6 +120,30 @@ fn walk_then_enter(band: f32, keys: &[egui::Key]) -> Option<FileNavAction<&'stat
     walk_with(band, &[], keys)
 }
 
+/// Tab from the top of a column that fits: the labels of the rows that get the focus, in turn.
+fn tab_stops(presses: usize) -> Vec<String> {
+    let ctx = context();
+    let frame = |events| frame(&ctx, 0.0, 700.0, events);
+    frame(vec![]);
+    let mut stops = Vec::new();
+    for _ in 0..presses {
+        let (_, full) = frame(key(egui::Key::Tab));
+        let update = full.platform_output.accesskit_update.as_ref().expect("accesskit is on");
+        if let Some(label) = update.nodes.iter().find(|(id, _)| *id == update.focus).and_then(|(_, n)| n.label()) {
+            stops.push(label.to_string());
+        }
+    }
+    stops
+}
+
+#[test]
+fn tab_meets_the_foot_in_the_order_it_is_drawn() {
+    let stops = tab_stops(10);
+    let at = |label: &str| stops.iter().position(|s| s == label).unwrap_or(usize::MAX);
+    let community = "A community with a name far too long for the column";
+    assert!(at("Print") < at("Options") && at("Options") < at(community) && at(community) < at("About"), "{stops:?}");
+}
+
 fn walk_with(band: f32, disabled: &[&'static str], keys: &[egui::Key]) -> Option<FileNavAction<&'static str>> {
     let ctx = context();
     let frame = |events| frame_with(&ctx, band, 700.0, disabled, events);

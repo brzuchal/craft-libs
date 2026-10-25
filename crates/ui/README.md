@@ -308,6 +308,7 @@ fn open_page(ui: &mut egui::Ui, places: &[Place<'_>], selected: usize, entries: 
         Some(PlacesAction::Crumb(step)) => { /* go back up to that folder */ }
         Some(PlacesAction::AddPlace) => { /* start a sign-in */ }
         Some(PlacesAction::Browse) => { /* show the system's own file dialog */ }
+        Some(PlacesAction::Notice) => { /* the notice's button: what it offered, e.g. Browse */ }
         None => {}
     }
 }
