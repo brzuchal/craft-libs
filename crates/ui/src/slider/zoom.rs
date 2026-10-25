@@ -43,6 +43,7 @@ pub struct ZoomBar<'a> {
     style: &'a ZoomBarStyle,
     stops: &'a [f64],
     slider_width: f32,
+    percent_label: Option<&'a str>,
 }
 
 const BUTTON: f32 = 18.0;
@@ -53,13 +54,20 @@ const TIGHT: f32 = 0.0;
 
 impl<'a> ZoomBar<'a> {
     pub fn new(percent: &'a mut f64, range: std::ops::RangeInclusive<f64>, labels: ZoomBarLabels<'a>, style: &'a ZoomBarStyle) -> Self {
-        Self { percent, range, labels, style, stops: &[], slider_width: 110.0 }
+        Self { percent, range, labels, style, stops: &[], slider_width: 110.0, percent_label: None }
     }
 
     /// The values `−` and `+` step through (sorted, in percent). Without stops they step to the
     /// previous or next multiple of 10.
     pub fn stops(mut self, stops: &'a [f64]) -> Self {
         self.stops = stops;
+        self
+    }
+
+    /// The percentage's accessible name and tooltip (`Zoom level`); without it the percentage is
+    /// named like the slider. Its value is the percentage either way.
+    pub fn percent_label(mut self, label: &'a str) -> Self {
+        self.percent_label = Some(label);
         self
     }
 
@@ -100,14 +108,20 @@ impl<'a> ZoomBar<'a> {
         let range = self.range.clone();
         let slider_width = self.slider_width;
         let percent = self.percent;
+        let percent_name = self.percent_label.unwrap_or(labels.zoom);
         let inner = ui.allocate_ui_with_layout(size, Layout::left_to_right(egui::Align::Center), |ui| {
             ui.spacing_mut().item_spacing.x = TIGHT;
             if glyph_button(ui, false, labels.zoom_out, style) {
                 *percent = down_to;
                 changed = true;
             }
-            let r =
-                Slider::new(percent, range, labels.zoom, &style.slider).width(slider_width).scale(Scale::Logarithmic).step(1.0).mark(100.0).show(ui);
+            let r = Slider::new(percent, range, labels.zoom, &style.slider)
+                .width(slider_width)
+                .scale(Scale::Logarithmic)
+                .step(1.0)
+                .mark(100.0)
+                .value_text(0, "%")
+                .show(ui);
             changed |= r.changed();
             if glyph_button(ui, true, labels.zoom_in, style) {
                 *percent = up_to;
@@ -116,9 +130,13 @@ impl<'a> ZoomBar<'a> {
             ui.add_space(2.0 * GAP);
             let (rect, resp) = ui.allocate_exact_size(vec2(label_w, size.y), Sense::click());
             ui.painter().text(rect.right_center(), Align2::RIGHT_CENTER, format!("{:.0}%", *percent), FontId::proportional(style.font), style.text);
-            let value = *percent;
-            resp.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, true, format!("{}: {value:.0}%", labels.zoom)));
-            percent_clicked = resp.on_hover_text(labels.zoom).clicked();
+            let shown = format!("{:.0}%", *percent);
+            let enabled = ui.is_enabled();
+            resp.widget_info(|| egui::WidgetInfo {
+                current_text_value: Some(shown.clone()),
+                ..egui::WidgetInfo::labeled(egui::WidgetType::Button, enabled, percent_name)
+            });
+            percent_clicked = resp.on_hover_text(percent_name).clicked();
         });
         ZoomBarResponse { changed, percent_clicked, response: inner.response }
     }
@@ -137,6 +155,7 @@ fn glyph_button(ui: &mut Ui, plus: bool, label: &str, style: &ZoomBarStyle) -> b
     if plus {
         ui.painter().line_segment([pos2(c.x, c.y - half), pos2(c.x, c.y + half)], stroke);
     }
-    resp.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, true, label));
+    let enabled = ui.is_enabled();
+    resp.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, enabled, label));
     resp.on_hover_text(label).clicked()
 }
