@@ -119,6 +119,17 @@ fn keyboard_moves_by_step_page_and_to_the_ends() {
 }
 
 /// Home and End reach the range's ends even when they are off the step grid.
+/// An editable slider's value field is named like the slider, so no input is unnamed.
+#[test]
+fn the_value_field_is_named_like_the_slider() {
+    let mut t = SliderTest::new(100.0);
+    t.field = true;
+    let (_, out) = t.frame(vec![]);
+    let update = out.platform_output.accesskit_update.expect("accesskit is on");
+    let field = update.nodes.iter().map(|(_, n)| n).find(|n| n.role() == egui::accesskit::Role::SpinButton).expect("a value field");
+    assert_eq!(field.label(), Some("Zoom"));
+}
+
 #[test]
 fn home_and_end_reach_off_grid_ends() {
     let ctx = Context::default();

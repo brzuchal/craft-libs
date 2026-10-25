@@ -348,6 +348,9 @@ impl<'a> Slider<'a> {
                     .custom_formatter(move |v, _| format!("{v:.decimals$}{suffix_owned}"))
                     .custom_parser(move |t| parse_typed(t, &typed_suffix)),
             );
+            // The field edits the same value, so screen readers hear it by the slider's name.
+            let (enabled, name, shown) = (ui.is_enabled(), self.label.to_string(), v);
+            field.widget_info(|| egui::WidgetInfo { label: Some(name.clone()), ..egui::WidgetInfo::drag_value(enabled, shown) });
             // A typed value that snaps back to the current one (100.4 with a step of 1) is no
             // change: the field stays in the response (its rect and interaction) but its own
             // changed flag is not passed on.
