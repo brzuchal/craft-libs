@@ -347,7 +347,9 @@ impl<'a> Slider<'a> {
                     .custom_parser(move |t| parse_typed(t, &typed_suffix)),
             );
             // A typed value that snaps back to the current one (100.4 with a step of 1) is no
-            // change: the field's own changed flag is not passed on then.
+            // change: the field stays in the response (its rect and interaction) but its own
+            // changed flag is not passed on.
+            let mut field = field;
             let mut applied = false;
             if field.changed() {
                 let v = self.snap(v);
@@ -357,9 +359,10 @@ impl<'a> Slider<'a> {
                     applied = true;
                 }
             }
-            if !field.changed() || applied {
-                response = response.union(field);
+            if field.changed() && !applied {
+                field.flags.remove(egui::response::Flags::CHANGED);
             }
+            response = response.union(field);
         }
         response
     }

@@ -47,6 +47,9 @@ pub struct ZoomBar<'a> {
 }
 
 const BUTTON: f32 = 18.0;
+/// How close to a stop counts as on it, so `+` from 99.7% goes to 100%, not past it, while
+/// rounding noise at a stop (100.000001) still moves on to the next one.
+const EPS: f64 = 1e-6;
 const GAP: f32 = 4.0;
 /// Space between `−`/`+` and the slider: none, since the slider already keeps its thumb inset
 /// from its ends, so the glyphs sit right at the track.
@@ -82,9 +85,9 @@ impl<'a> ZoomBar<'a> {
         let next = if self.stops.is_empty() {
             if up { (v / 10.0).floor() * 10.0 + 10.0 } else { (v / 10.0).ceil() * 10.0 - 10.0 }
         } else if up {
-            self.stops.iter().copied().find(|s| *s > v + 0.5).unwrap_or(hi)
+            self.stops.iter().copied().find(|s| *s > v + EPS).unwrap_or(hi)
         } else {
-            self.stops.iter().rev().copied().find(|s| *s < v - 0.5).unwrap_or(lo)
+            self.stops.iter().rev().copied().find(|s| *s < v - EPS).unwrap_or(lo)
         };
         next.clamp(lo, hi)
     }

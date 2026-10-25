@@ -271,6 +271,15 @@ fn zoom_bar_keeps_its_size_and_steps_through_its_stops() {
         zoom_frame(&ctx, &mut p, e);
     }
     assert_eq!(p, 100.0, "- goes to the previous stop");
+    // From between stops, + and - go to the nearest stop on that side, not past it.
+    for (from, want) in [(99.7, 100.0), (100.3, 100.0)] {
+        p = from;
+        let x = if want > from { plus_x } else { minus_x };
+        for e in [vec![Event::PointerMoved(pos2(x, y)), pointer(pos2(x, y), true)], vec![pointer(pos2(x, y), false)]] {
+            zoom_frame(&ctx, &mut p, e);
+        }
+        assert_eq!(p, want, "from {from}");
+    }
 }
 
 #[test]
