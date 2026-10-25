@@ -56,13 +56,16 @@ impl<'a> StatusBar<'a> {
         ui.painter().hline(rect.x_range(), rect.top() + 0.5, Stroke::new(1.0, s.border));
         let inner = rect.shrink2(vec2(PAD_X, 2.0));
         ui.scope_builder(egui::UiBuilder::new().max_rect(inner).layout(Layout::right_to_left(Align::Center)), |ui| {
+            // Right-hand controls wider than the bar stop at its edge instead of reaching over the
+            // panel beside it.
+            ui.shrink_clip_rect(rect);
             ui.spacing_mut().item_spacing = vec2(GAP, 0.0);
             right(ui);
             // Never inverted: in a window too narrow for the right-hand controls the left zone is
             // simply empty.
             let rest = Rect::from_min_max(inner.min, pos2((ui.min_rect().left() - GAP * 2.0).max(inner.min.x), inner.bottom()));
             ui.scope_builder(egui::UiBuilder::new().max_rect(rest).layout(Layout::left_to_right(Align::Center)), |ui| {
-                ui.set_clip_rect(rest);
+                ui.shrink_clip_rect(rest);
                 ui.spacing_mut().item_spacing = vec2(GAP * 3.0, 0.0);
                 left(ui);
             });
@@ -136,5 +139,34 @@ mod tests {
         full.textures_delta.clear();
         let r = left_rect.expect("the left zone is laid out");
         assert!(r.width() >= 0.0 && r.height() >= 0.0, "{r:?}");
+    }
+
+    /// Both zones paint and take input only inside the bar and inside the parent's clip: right-hand
+    /// controls wider than the bar stop at its edge, and a bar in a clipped panel stays in it.
+    #[test]
+    fn both_zones_stay_inside_the_bar_and_the_parent_clip() {
+        let ctx = egui::Context::default();
+        let style = StatusBarStyle::from_visuals(&egui::Visuals::light());
+        let (mut bar, mut left_clip, mut right_clip) = (Rect::NOTHING, Rect::NOTHING, Rect::NOTHING);
+        let parent = Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(150.0, 40.0));
+        let input = egui::RawInput { screen_rect: Some(Rect::from_min_size(egui::Pos2::ZERO, vec2(300.0, 40.0))), ..Default::default() };
+        let mut full = ctx.run_ui(input, |ui| {
+            ui.set_clip_rect(parent);
+            bar = StatusBar::new(&style)
+                .show(
+                    ui,
+                    |ui| left_clip = ui.clip_rect(),
+                    |ui| {
+                        ui.allocate_exact_size(vec2(500.0, 10.0), Sense::hover());
+                        right_clip = ui.clip_rect();
+                    },
+                )
+                .rect;
+        });
+        full.textures_delta.clear();
+        let inside = parent.intersect(bar);
+        for (zone, clip) in [("left", left_clip), ("right", right_clip)] {
+            assert!(inside.contains_rect(clip) || !clip.is_positive(), "{zone}: {clip:?} outside {inside:?}");
+        }
     }
 }

@@ -21,6 +21,44 @@ fn frame(ctx: &egui::Context, frame: RibbonFrame, captions: bool) -> (Rect, Vec<
     (outer, groups)
 }
 
+/// Two groups with the same caption get a launcher each, not one shared interaction.
+#[test]
+fn groups_with_the_same_caption_keep_their_launchers_apart() {
+    let ctx = egui::Context::default();
+    ctx.enable_accesskit();
+    let style = RibbonStyle::from_visuals(&egui::Visuals::light());
+    let mut full = ctx.run_ui(egui::RawInput::default(), |ui| {
+        Ribbon::new(&style).captions(true).show(ui, |ui| {
+            for _ in 0..2 {
+                RibbonGroup::new("Font", &style).launcher("More").show(ui, |ui| {
+                    ui.allocate_exact_size(vec2(40.0, 20.0), Sense::hover());
+                });
+            }
+        });
+    });
+    full.textures_delta.clear();
+    let update = full.platform_output.accesskit_update.expect("accesskit is on");
+    let launchers: Vec<_> = update.nodes.iter().filter(|(_, n)| n.label() == Some("More")).map(|(id, _)| *id).collect();
+    assert_eq!(launchers.len(), 2, "{launchers:?}");
+    assert_ne!(launchers[0], launchers[1]);
+}
+
+/// A ribbon partly inside a clipped panel paints its contents only where the panel allows.
+#[test]
+fn the_ribbon_keeps_the_parent_clip() {
+    let ctx = egui::Context::default();
+    let style = RibbonStyle::from_visuals(&egui::Visuals::light());
+    let parent = Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(120.0, 200.0));
+    let mut clip = Rect::NOTHING;
+    let input = egui::RawInput { screen_rect: Some(Rect::from_min_size(egui::Pos2::ZERO, vec2(800.0, 200.0))), ..Default::default() };
+    let mut full = ctx.run_ui(input, |ui| {
+        ui.set_clip_rect(parent);
+        Ribbon::new(&style).show(ui, |ui| clip = ui.clip_rect());
+    });
+    full.textures_delta.clear();
+    assert!(parent.contains_rect(clip), "{clip:?} reaches past {parent:?}");
+}
+
 #[test]
 fn captions_add_their_row_and_a_card_adds_its_margin() {
     let ctx = egui::Context::default();

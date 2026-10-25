@@ -125,7 +125,9 @@ impl<'a> Ribbon<'a> {
         let captions = self.captions;
         let inner = ui
             .scope_builder(egui::UiBuilder::new().max_rect(inner_rect).layout(Layout::left_to_right(Align::Min)), |ui| {
-                ui.set_clip_rect(body);
+                // Within the parent's clip, never past it: a ribbon partly inside a clipped panel
+                // paints and takes input only where both allow.
+                ui.shrink_clip_rect(body);
                 ui.spacing_mut().item_spacing = vec2(0.0, 0.0);
                 ui.data_mut(|d| d.insert_temp(captions_id(), captions));
                 add(ui)
@@ -201,7 +203,8 @@ impl<'a> RibbonGroup<'a> {
         };
         width = width.max(caption_w + GROUP_PAD * 2.0);
         let rect = Rect::from_min_size(top, vec2(width, height));
-        ui.advance_cursor_after_rect(rect);
+        // The group's own id, so two groups with the same caption get distinct launchers.
+        let group_id = ui.advance_cursor_after_rect(rect);
         let mut launcher_clicked = false;
         if captions {
             let cap = Rect::from_min_max(pos2(rect.left(), rect.bottom() - CAPTION_H), rect.max);
@@ -211,7 +214,7 @@ impl<'a> RibbonGroup<'a> {
             ui.painter().text(text_area.center(), Align2::CENTER_CENTER, self.caption, FontId::proportional(s.caption_font), s.caption);
             if let Some(tip) = self.launcher {
                 let lr = Rect::from_center_size(pos2(cap.right() - 9.0, cap.center().y), vec2(14.0, 14.0));
-                let resp = ui.interact(lr, ui.id().with(("launcher", self.caption)), Sense::click());
+                let resp = ui.interact(lr, group_id.with("launcher"), Sense::click());
                 if resp.hovered() {
                     ui.painter().rect_filled(lr, CornerRadius::same(2), s.hover);
                 }
